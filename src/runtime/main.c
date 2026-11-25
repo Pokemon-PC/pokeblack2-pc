@@ -9,6 +9,7 @@
  * Env:   PB2_TRACE=1   log the first access to each I/O register
  */
 #include "rt.h"
+#include "version.h"
 #include "rc_decls.h"
 
 #include <stdlib.h>
@@ -24,8 +25,8 @@ int main(int argc, char **argv) {
         void config_message(const char *msg);
         char msg[1400];
         snprintf(msg, sizeof msg,
-                 "Pokemon Black 2 ROM not found (English, USA/Europe: your own copy, .nds).\n\n"
-                 "Put it next to pokeblack2.exe, or write its folder in config.ini:\n"
+                 PB2_GAME_NAME " ROM not found (" PB2_GAME_LANG ": your own copy, .nds).\n\n"
+                 "Put it next to " PB2_FILE_BASE ".exe, or write its folder in config.ini:\n"
                  "rom_dir = <folder>   (now: \"%s\").", config_rom_dir());
         config_message(msg);
         return 2;

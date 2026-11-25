@@ -21,6 +21,7 @@ Model:
   - flags are computed only when a later instruction may read them.
 """
 import argparse
+import json
 import os
 import re
 import sys
@@ -121,10 +122,17 @@ def parse_file(path):
     addr = None
     in_text = True
     active = [True]           # #if defined(X) / #else / #endif (version blocks)
+    # White 2 (--addr-map): the real address of each function, measured on
+    # the binaries (tools/recomp/w2addr.py); labels follow their name plus the
+    # function's shift until a version block changes the sizes, then count
+    fid = os.path.splitext(os.path.basename(path))[0]
+    fmap = ADDR_MAP.get(fid) if ADDR_MAP else None
+    delta, cond_seen = 0, False
     for raw in open(path, encoding="utf-8", errors="replace"):
         line = raw.rstrip("\n")
         pp = line.strip()
         if pp.startswith("#"):
+            cond_seen = True
             mi = re.match(r"^#if\s+defined\((\w+)\)\s*$", pp)
             if mi:
                 active.append(active[-1] and mi.group(1) in DEFINES)
@@ -171,7 +179,20 @@ def parse_file(path):
             mc = re.search(r"0x([0-9A-Fa-f]{8})", comment)
             if la is None and mc:
                 la = int(mc.group(1), 16)
-            if la is not None:
+            if SEQ_CHECK is not None and la is not None and addr is not None:
+                SEQ_CHECK.append((name, la, addr))
+            # SEQUENTIAL (White 2): addresses come from the sizes of what is
+            # assembled, not from the names (which are Black 2's); only a far
+            # jump (a new region: bss, another module) resyncs on a name
+            if fmap is not None and la is not None:
+                if cur is not None and name == cur["name"] and name in fmap:
+                    addr = fmap[name]             # a function: measured
+                    delta = addr - la
+                    cond_seen = False
+                elif cur is None or not cond_seen or addr is None:
+                    addr = la + delta
+                # else: after a version block inside the function, counted
+            elif la is not None and (not SEQUENTIAL or addr is None or abs(la - addr) > SEQ_RESYNC):
                 addr = la
             if cur is not None:
                 cur["items"].append(("label", name, addr))
@@ -266,6 +287,10 @@ HLE = {
     "OS_Terminate": "logged (where the game stopped), then halts like the original",
 }
 
+SEQUENTIAL = False       # addresses from sizes (White 2), see parse_file
+SEQ_RESYNC = 0x1000      # a bigger gap between computed and named address: new region
+SEQ_CHECK = None         # list collecting (label, named address, computed address)
+ADDR_MAP = None          # {module: {function: White 2 address}} (--addr-map)
 DEFINES = {"BLACK2"}           # asm "#if defined(...)" blocks; WHITE2 with --version white2
 CONSTS = {"GAME_VERSION": 23}      # VERSION_BLACK2 (22 = White 2), set by --version
 
@@ -296,6 +321,7 @@ class FuncGen:
     func_names = set()       # every function name of the asm
     continuations = set()    # functions that are the split-off rest of the previous one
     inner_labels = set()     # labels inside functions (not function names)
+    file_labels = {}         # {file: {label: address}} as parsed (White 2: measured)
 
     def __init__(self, f, cname, resolver, fileid):
         self.f = f
@@ -689,6 +715,8 @@ class FuncGen:
             mm = re.search(r"([0-9A-Fa-f]{8})$", lab)
             if lab in self.labels and self.labels[lab] is not None:
                 la = self.labels[lab]
+            elif FuncGen.file_labels.get(self.fileid, {}).get(lab) is not None:
+                la = FuncGen.file_labels[self.fileid][lab]   # a pool of another function
             elif mm:
                 la = int(mm.group(1), 16)
             if la is None:
@@ -947,10 +975,16 @@ def main():
                     help="other asm files of the repository, translated as part of main")
     ap.add_argument("--chunk", type=int, default=600)
     ap.add_argument("--version", choices=["black2", "white2"], default="black2")
+    ap.add_argument("--addr-map", default=None,
+                    help="White 2: real function addresses (tools/recomp/w2addr.py output)")
     a = ap.parse_args()
     CONSTS["GAME_VERSION"] = 23 if a.version == "black2" else 22
     DEFINES.clear()
     DEFINES.add("BLACK2" if a.version == "black2" else "WHITE2")
+    global ADDR_MAP
+    if a.version == "white2" and not a.addr_map:
+        raise SystemExit("--version white2 needs --addr-map (python tools/recomp/w2addr.py ...)")
+    ADDR_MAP = json.load(open(a.addr_map)) if a.addr_map else None
 
     asm_dir = os.path.join(a.repo, "asm")
     ids = a.files or sorted(os.path.splitext(n)[0] for n in os.listdir(asm_dir) if n.endswith(".s"))
@@ -961,6 +995,11 @@ def main():
         files["main"] = files.get("main", []) + parse_file(os.path.join(a.repo, extra))
 
     for fid, fs in files.items():
+        labs = FuncGen.file_labels.setdefault(fid, {})
+        for f in fs:
+            for it in f["items"]:
+                if it[0] == "label" and it[2] is not None:
+                    labs.setdefault(it[1], it[2])
         for i, f in enumerate(fs):
             FuncGen.func_names.add(f["name"])
             FuncGen.inner_labels.update(it[1] for it in f["items"] if it[0] == "label" and it[1] != f["name"])
@@ -986,6 +1025,10 @@ def main():
             return local[fileid][name] + "()"
         if name in glob_names:
             return glob_names[name] + "()"
+        if ADDR_MAP:                      # White 2: the measured address of that name
+            for mod in ADDR_MAP.values():
+                if isinstance(mod, dict) and name in mod:
+                    return f"call_addr(0x{mod[name]:08X}u)"
         m = re.search(r"([0-9A-Fa-f]{8})$", name)
         if m:
             return f"call_addr(0x{m.group(1)}u)"
@@ -1066,6 +1109,29 @@ def main():
             ov = -1 if not fid.startswith("overlay_") else int(fid.split("_")[1])
             o.write(f"    {{ 0x{addr:08X}u, {ov}, {cn} }},\n")
         o.write("};\nconst unsigned gDispatchCount = sizeof gDispatch / sizeof gDispatch[0];\n")
+    # main-module addresses the runtime knows (thread info, handshake...): the
+    # Black 2 -> this game table, and the shift of the static bss
+    entries = []
+    bss = [0, 0, 0]
+    if ADDR_MAP:
+        for name, w in ADDR_MAP.get("main", {}).items():
+            mh = re.search(r"([0-9A-Fa-f]{8})$", name)
+            if mh:
+                entries.append((int(mh.group(1), 16), w))
+        bss = ADDR_MAP.get("_bss", bss)
+    entries.sort()
+    with open(os.path.join(a.out, "rc_addrmap.c"), "w", encoding="utf-8", newline="\n") as o:
+        o.write("/* generated by tools/recomp/recomp.py: Black 2 address -> this game's */\n")
+        o.write('#include "cpu.h"\n\n')
+        o.write("const u32 gAddrMap[][2] = {\n")
+        for b, w in entries:
+            o.write(f"    {{ 0x{b:08X}u, 0x{w:08X}u }},\n")
+        if not entries:
+            o.write("    { 0, 0 },\n")
+        o.write("};\n")
+        o.write(f"const unsigned gAddrMapCount = {len(entries)};\n")
+        o.write(f"const u32 gBssStart = 0x{bss[0]:08X}u, gBssEnd = 0x{bss[1]:08X}u;\n")
+        o.write(f"const s32 gBssDelta = {bss[2]};\n")
     pct = 100.0 * (total_ins - total_unimpl) / max(1, total_ins)
     print(f"{len(files)} files, {len(decls)} functions, {total_ins} instructions, "
           f"{total_unimpl} untranslated ({pct:.3f}% translated)")

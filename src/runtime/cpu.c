@@ -1,5 +1,6 @@
 /* cpu.c - CPU state, CPSR with banked registers, CP15, logging. */
 #include "rt.h"
+#include "version.h"
 
 #include <stdarg.h>
 #include <stdlib.h>
@@ -123,7 +124,7 @@ void rt_fatal(const char *fmt, ...) {
     void rt_stack_here(void);
     rt_stack_here();
     char box[800];
-    snprintf(box, sizeof box, "The game stopped: %s\n\nDetails in pokeblack2.log.", msg);
+    snprintf(box, sizeof box, "The game stopped: %s\n\nDetails in " PB2_FILE_BASE ".log.", msg);
     void config_message(const char *msg);
     config_message(box);
     exit(3);

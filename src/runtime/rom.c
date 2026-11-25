@@ -1,5 +1,6 @@
 /* rom.c - the player's ROM: file system table, overlays (BLZ decompression). */
 #include "rt.h"
+#include "version.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -29,8 +30,8 @@ void rom_load(const char *path) {
     }
     fclose(f);
     gRom = buf;
-    if (memcmp(gRom + 0x0C, "IREO", 4) != 0) {
-        rt_log("warning: game code %.4s (expected IREO, Pokemon Black 2 USA/Europe)", (const char *)gRom + 0x0C);
+    if (memcmp(gRom + 0x0C, PB2_GAME_CODE, 4) != 0) {
+        rt_log("warning: game code %.4s (expected " PB2_GAME_CODE ", " PB2_GAME_NAME ", " PB2_GAME_LANG ")", (const char *)gRom + 0x0C);
     }
     u32 ovt = r32(gRom + 0x50), ovsz = r32(gRom + 0x54);
     gOverlayCount = (int)(ovsz / 32);

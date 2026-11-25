@@ -17,21 +17,33 @@ import zipfile
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 build = sys.argv[1] if len(sys.argv) > 1 else os.path.join(ROOT, "build", "release")
-exe = os.path.join(build, "pokeblack2.exe")
-if not os.path.isfile(exe):
-    sys.exit(f"no {exe}: build the release first (cmake -B build/release -DPB2_RELEASE=ON)")
-
-name = "PokemonNoire2-PC"
+# Black 2 or White 2, from the exe the build produced
+GAMES = {"pokeblack2": ("Pokemon Noire 2", "Pokemon Black 2", "IREO", "PokemonNoire2-PC"),
+         "pokewhite2": ("Pokemon Blanche 2", "Pokemon White 2", "IRDO", "PokemonBlanche2-PC"),
+         "pokeblanche2": ("Pokemon Version Blanche 2", "Pokemon Version Blanche 2", "IRDF", "PokemonBlanche2-FR-PC"),
+         "pokenoire2": ("Pokemon Version Noire 2", "Pokemon Version Noire 2", "IREF", "PokemonNoire2-FR-PC")}
+base = next((b for b in GAMES if os.path.isfile(os.path.join(build, b + ".exe"))), None)
+if not base:
+    sys.exit(f"no pokeblack2.exe / pokewhite2.exe in {build}: build the release first "
+             "(cmake -B build/release -DPB2_RELEASE=ON [-DPB2_VERSION=white2])")
+exe = os.path.join(build, base + ".exe")
+jeu, game_en, code, name = GAMES[base]
 dist = os.path.join(ROOT, "dist")
 out = os.path.join(dist, name)
 shutil.rmtree(out, ignore_errors=True)
 os.makedirs(out)
 
-shutil.copy2(exe, os.path.join(out, "pokeblack2.exe"))
-shutil.copy2(os.path.join(ROOT, "tools", "package", "LISEZMOI.txt"), os.path.join(out, "LISEZMOI.txt"))
+shutil.copy2(exe, os.path.join(out, base + ".exe"))
+lisez = open(os.path.join(ROOT, "tools", "package", "LISEZMOI.txt"), encoding="utf-8").read()
+french = code.endswith("F")
+lisez = lisez.replace("{JEU}", jeu).replace("{CODE}", code).replace("{EXE}", base)
+lisez = lisez.replace("{LANGUE_ROM}", "en FRANCAIS (version francaise)" if french else "en ANGLAIS (version USA/Europe)")
+lisez = lisez.replace("{LIMITE_LANGUE}", "" if french else "- Jeu en anglais (la version francaise a son propre paquet).\n")
+with open(os.path.join(out, "LISEZMOI.txt"), "w", encoding="utf-8", newline="\r\n") as f:
+    f.write(lisez)
 with open(os.path.join(out, "config.ini"), "w", newline="\r\n") as f:
-    f.write("; Pokemon Black 2 (PC) - settings\n\n"
-            "; Folder holding your Pokemon Black 2 ROM (English, USA/Europe). Empty: the\n"
+    f.write(f"; {game_en} (PC) - settings\n\n"
+            f"; Folder holding your {game_en} ROM (English, USA/Europe). Empty: the\n"
             "; ROM is looked for next to this exe. The file is recognised by its header,\n"
             "; whatever its name. Example: rom_dir = D:\\Games\\roms\n"
             "rom_dir =\n")
@@ -44,7 +56,7 @@ for dirpath, _, files in os.walk(out):
             sys.exit(f"refused: {fn} must not be packaged")
         with open(os.path.join(dirpath, fn), "rb") as f:
             head = f.read(0x10)
-        if head[:10] == b"POKEMON B2":
+        if head[:7] == b"POKEMON":
             sys.exit(f"refused: {fn} is a ROM")
 
 # imports: system DLLs only (SDL2 is linked in)

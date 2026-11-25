@@ -29,3 +29,18 @@ la maison à Pavonnay.
   Carte), porte de la Route 19 (Potion), leçon de capture de Bianca
   (Chacripan sauvage, sac, Poké Ball, « Gotcha! », ~41 500), joueur libre
   sur la Route 19 (~43 500).
+
+## Blanche 2 (anglaise et française)
+
+Les sauvegardes de Noire 2 et Blanche 2 ont le même format : Blanche 2
+recharge une sauvegarde faite par Noire 2, ce qui évite de rejouer à
+l'aveugle des déplacements dont le minutage diffère entre versions et
+langues (textes plus longs en français).
+
+- `b2_save_at_lookout.keys` (Noire 2, depuis la sauvegarde du premier test,
+  `PB2_RTC=2026-11-25-16:00`) : comme `continue_to_first_battle.keys`
+  jusqu'au starter et au Pokédex, puis X → SAUVEGARDER au belvédère.
+- `w2_battle_from_lookout.keys` (Blanche 2, `pokewhite2.exe` ou
+  `pokeblanche2.exe`, avec cette sauvegarde) : CONTINUE, descente qui fait
+  venir Matis, fin de la scène avec B, Matis, puis le combat (~10 600 à
+  15 500) : « VS. », Moustillon, Charge, Mimi-Queue.

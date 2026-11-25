@@ -20,6 +20,7 @@
 #include "video.h"
 #include "ppu.h"
 #include "../runtime/rt.h"
+#include "../runtime/version.h"
 
 #include <SDL.h>
 #include <stdlib.h>
@@ -71,7 +72,7 @@ void video_init(void) {
         rt_fatal("SDL: %s", SDL_GetError());
     }
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
-    sWin = SDL_CreateWindow("Pokemon Black 2 (PC)", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+    sWin = SDL_CreateWindow(PB2_GAME_NAME " (PC)", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                             PC_SCREEN_W * 2, PC_SCREEN_H * 4, SDL_WINDOW_RESIZABLE);
     if (!sWin) {
         rt_fatal("SDL window: %s", SDL_GetError());

@@ -12,6 +12,7 @@
  * the recompiled code is the English Pokemon Black 2 (IREO, "POKEMON B2").
  */
 #include "rt.h"
+#include "version.h"
 
 #include <stdlib.h>
 #include <string.h>
@@ -37,9 +38,9 @@ static void trim(char *s) {
 }
 
 static const char kDefaultIni[] =
-    "; Pokemon Black 2 (PC) - settings\n"
+    "; " PB2_GAME_NAME " (PC) - settings\n"
     "\n"
-    "; Folder holding your Pokemon Black 2 ROM (English, USA/Europe). Empty: the\n"
+    "; Folder holding your " PB2_GAME_NAME " ROM (" PB2_GAME_LANG "). Empty: the\n"
     "; ROM is looked for next to this exe. The file is recognised by its header,\n"
     "; whatever its name. Example: rom_dir = D:\\Games\\roms\n"
     "rom_dir =\n";
@@ -91,7 +92,7 @@ static int rom_is_ours(const char *path) {
     u8 h[0x10];
     size_t n = fread(h, 1, sizeof h, f);
     fclose(f);
-    return n == sizeof h && memcmp(h, "POKEMON B2", 10) == 0 && memcmp(h + 0x0C, "IREO", 4) == 0;
+    return n == sizeof h && memcmp(h, PB2_GAME_TITLE, 10) == 0 && memcmp(h + 0x0C, PB2_GAME_CODE, 4) == 0;
 }
 
 static int search_dir(const char *dir, char *out, size_t outsz) {
@@ -135,7 +136,7 @@ const char *config_find_rom(int argc, char **argv) {
     }
     if (explicit_rom) {
         if (!rom_is_ours(explicit_rom)) {
-            rt_log("warning: %s is not Pokemon Black 2 (English, IREO)", explicit_rom);
+            rt_log("warning: %s is not " PB2_GAME_NAME " (" PB2_GAME_LANG ", " PB2_GAME_CODE ")", explicit_rom);
         }
         return explicit_rom;
     }
@@ -165,6 +166,6 @@ void config_message(const char *msg) {
     fputs(msg, stderr);
     fputc('\n', stderr);
     if (!GetConsoleWindow() && !getenv("PB2_HEADLESS")) {
-        MessageBoxA(NULL, msg, "Pokemon Black 2 (PC)", MB_OK | MB_ICONERROR);
+        MessageBoxA(NULL, msg, PB2_GAME_NAME " (PC)", MB_OK | MB_ICONERROR);
     }
 }

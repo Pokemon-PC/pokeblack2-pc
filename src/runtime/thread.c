@@ -22,7 +22,7 @@
 #include <windows.h>
 
 #define MAX_THREADS 48
-#define INFO 0x0214C22Cu
+#define INFO pb2_addr(0x0214C22Cu)     /* Black 2 address, moved in White 2 */
 
 typedef struct {
     u32 ctx;
@@ -254,7 +254,7 @@ void thread_switch_context(u32 unused0, u32 unused1) {
 void thread_dump(void) {
     volatile u32 *info = (volatile u32 *)(uintptr_t)INFO;
     rt_log("threads: current 0x%08X (fiber ctx 0x%08X)", info[1], sCur ? sCur->ctx : 0);
-    volatile u32 *os = (volatile u32 *)(uintptr_t)0x0214C210;
+    volatile u32 *os = (volatile u32 *)(uintptr_t)pb2_addr(0x0214C210u);
     rt_log("  OS 0214C210: %08X %08X %08X %08X %08X %08X %08X %08X | info %08X %08X %08X %08X", os[0], os[1], os[2], os[3],
            os[4], os[5], os[6], os[7], info[0], info[1], info[2], info[3]);
     for (u32 t = info[2], k = 0; t && k < 32; t = *(volatile u32 *)(uintptr_t)(t + 0x68), k++) {

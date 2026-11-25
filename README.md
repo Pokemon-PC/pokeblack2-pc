@@ -32,6 +32,25 @@ Le lanceur règle `rom_dir` ; sur la machine de développement :
 La sauvegarde est `pokeblack2.sav` (512 Kio, image brute de la mémoire flash),
 à côté de l'exe (`PB2_SAVE=fichier` pour un autre).
 
+## Blanche 2
+
+Même dépôt, même désassemblage. Les fonctions de Blanche 2 ne sont pas aux
+adresses de leurs noms (ceux de Noire 2) : elles sont mesurées sur les deux
+ROM du joueur, puis le code est traduit avec cette carte.
+
+```
+python tools/recomp/w2addr.py "<ROM Noire 2>.nds" "<ROM Blanche 2>.nds" ../pokeblack2 build/w2addr.json
+python tools/recomp/recomp.py ../pokeblack2 build/rc_w2 --extra lib/asm/crt0.s --version white2 --addr-map build/w2addr.json
+cmake -S . -B build/pc_w2 -G Ninja -DCMAKE_C_COMPILER=clang -DPB2_VERSION=white2
+cmake --build build/pc_w2          # pokewhite2.exe (ROM Blanche 2 anglaise, IRDO)
+```
+
+Version française : même chose avec la ROM française à la place de la ROM
+Blanche 2 anglaise dans `w2addr.py` (carte `build/w2fr_addr.json`, code dans
+`build/rc_w2fr`), puis `-DPB2_VERSION=white2 -DPB2_LANG=fr` →
+`pokeblanche2.exe` (ROM `IRDF`). Chaque version et chaque langue a son exe,
+sa sauvegarde et son journal.
+
 ## Compiler
 
 ```

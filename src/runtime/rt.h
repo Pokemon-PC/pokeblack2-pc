@@ -55,6 +55,10 @@ void cpu_init(void);
 void cpu_save(Cpu *c);
 void cpu_restore(const Cpu *c);
 
+/* Black 2 address -> the compiled game's, and back (dispatch.c) */
+u32 pb2_addr(u32 b2);
+u32 pb2_b2addr(u32 a);
+
 /* threads (thread.c) */
 void thread_init(void);
 void thread_switch_context(u32 save_ctx, u32 load_ctx);

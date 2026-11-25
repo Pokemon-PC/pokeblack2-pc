@@ -5,6 +5,7 @@
  * needs them; every unknown message is logged.
  */
 #include "rt.h"
+#include "version.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -117,7 +118,7 @@ static const char *save_path(void) {
     static char p[1100];
     if (!p[0]) {
         const char *config_exe_dir(void);
-        snprintf(p, sizeof p, "%s\\pokeblack2.sav", config_exe_dir());
+        snprintf(p, sizeof p, "%s\\" PB2_FILE_BASE ".sav", config_exe_dir());
     }
     return p;
 }
@@ -481,7 +482,7 @@ static void handshake_step(u32 lr, u32 p) {
 }
 
 void arm7_on_wait(void) {
-    u32 lr = LR;
+    u32 lr = pb2_b2addr(LR);                         /* compared with Black 2 addresses */
     if (lr >= 0x02079F5C && lr < 0x02079FE4) {
         handshake_step(lr, R(5));
         return;

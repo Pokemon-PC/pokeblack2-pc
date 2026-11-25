@@ -281,6 +281,55 @@ L'exe contient le code du jeu traduit en C (comme les exe des autres ports
 contiennent le code des décompilations) mais aucune ressource : images,
 sons, textes et cartes viennent de la ROM du joueur.
 
+## Blanche 2 (2026-11-25)
+
+Le désassemblage construit aussi Blanche 2 anglaise (`IRDO`, sha1
+`b5d7490b…`, ROM du joueur dans `roms\`). Les blocs `#if defined(WHITE2)` /
+`BLACK2` changent la taille de 27 fonctions : en Blanche 2, le code qui les
+suit est décalé (programme principal jusqu'à +0x48, overlays chargés 0x40
+plus loin, BSS +0x40), alors que les étiquettes portent les adresses de
+Noire 2.
+
+- `tools/recomp/w2addr.py` mesure l'adresse réelle de chaque fonction sur les
+  binaires (programme principal décompressé via ses paramètres de module,
+  overlays BLZ) : les premiers octets d'instructions de chaque fonction de
+  Noire 2 sont cherchés dans Blanche 2 près de leur adresse, branchements
+  relatifs masqués ; une fonction dont le code change prend le décalage de la
+  précédente. Résultat : `build/w2addr.json` (+ décalage de la BSS).
+- `recomp.py --version white2 --addr-map` : chaque fonction commence à son
+  adresse mesurée ; à l'intérieur, les étiquettes suivent nom + décalage
+  jusqu'à un bloc de version, puis sont comptées ; les pools littéraux lus
+  par une autre fonction prennent l'adresse calculée (sinon : lecture à côté,
+  plantage au menu). `rc_addrmap.c` donne au runtime la correspondance pour
+  ses adresses fixes (infos des fils, poignée de main ARM7 : `pb2_addr()`).
+- `tools/recomp/w2check.py` : 18 877 constantes des pools sur 18 878 sont
+  retrouvées dans le binaire de Blanche 2 à l'adresse calculée.
+- `CMake -DPB2_VERSION=white2` → `pokewhite2.exe` (`version.h` : nom, code
+  jeu, fichiers `.sav`/`.log`) ; `tools/package.py` fait
+  `PokemonBlanche2-PC-<date>.zip`.
+
+Vérifié : intro, écran titre (Kyurem Blanc), nouvelle partie, saisie du nom,
+ville, sauvegarde en jeu, et le combat contre Matis (sauvegarde de Noire 2
+faite au belvédère, rechargée par Blanche 2 : `tests/w2_battle_from_lookout.keys`).
+
+**Blanche 2 française** (`IRDF`) : même méthode, carte mesurée entre Noire 2
+anglaise et Blanche 2 française (`build/w2fr_addr.json`) ; `w2addr.py`
+fouille désormais tous les modules (en français le code bouge aussi dans des
+overlays de même taille). 18 814 constantes sur 18 878 tombent juste ; 93
+fonctions ont un code propre à la version française (elles exécutent la
+logique anglaise à leur adresse française). `-DPB2_LANG=fr` →
+`pokeblanche2.exe` (sauvegarde `pokeblanche2.sav`). Vérifié : titre
+« APPUYEZ SUR START », présentation et nom en français, ville, combat contre
+Matis en français. Noire 2 française : il faut la ROM `IREF` (absente).
+
+Paquets (2026-11-26) : `build/release` (Noire 2), `build/release_w2`
+(Blanche 2), `build/release_w2fr` (Blanche 2 française), chacun avec
+`-DPB2_RELEASE=ON`, puis `python tools/package.py <dossier>` →
+`PokemonNoire2-PC`, `PokemonBlanche2-PC`, `PokemonBlanche2-FR-PC` (~12 Mio
+chacun, LISEZMOI selon la langue). Vérifié : chaque exe, décompressé dans un
+dossier neuf avec `rom_dir` vers le dossier commun des ROM, y trouve sa ROM
+par l'en-tête (parmi toutes les autres) et atteint son écran titre.
+
 ## Commandes
 
 ```

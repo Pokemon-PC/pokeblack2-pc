@@ -2,6 +2,7 @@
  * game thread is suspended and its call stack printed (host addresses:
  * tools/symbolize.py turns them into game function names). */
 #include "rt.h"
+#include "version.h"
 
 #include <stdarg.h>
 #include <stdlib.h>
@@ -22,7 +23,7 @@ void rt_write_err(const char *s, int n) {
         } else {
             const char *config_exe_dir(void);
             char p[MAX_PATH + 32];
-            snprintf(p, sizeof p, "%s\\pokeblack2.log", config_exe_dir());
+            snprintf(p, sizeof p, "%s\\" PB2_FILE_BASE ".log", config_exe_dir());
             out = CreateFileA(p, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
         }
     }

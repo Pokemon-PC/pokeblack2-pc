@@ -1,24 +1,23 @@
-Pokemon Noire 2 - version PC (non officielle)
+{JEU} - version PC (non officielle)
 =============================================
 
-Ce programme fait tourner Pokemon Noire 2 nativement sur PC (Windows 10/11,
+Ce programme fait tourner {JEU} nativement sur PC (Windows 10/11,
 64 bits), sans emulateur. Il ne contient AUCUNE donnee du jeu : il lit tout
 (images, sons, textes, cartes) dans VOTRE propre copie du jeu.
 
 Ce qu'il faut
 -------------
-Votre ROM de Pokemon Noire 2 en ANGLAIS (version USA/Europe, fichier .nds,
-code jeu IREO). Les autres versions (francaise, Blanche 2) ne sont pas encore
-prises en charge.
+Votre ROM de {JEU} {LANGUE_ROM} (fichier .nds, code jeu {CODE}).
+Chaque version et chaque langue a son propre paquet.
 
 Installation
 ------------
 1. Decompressez ce dossier ou vous voulez.
-2. Mettez votre ROM a cote de pokeblack2.exe (le nom du fichier n'a pas
+2. Mettez votre ROM a cote de {EXE}.exe (le nom du fichier n'a pas
    d'importance : elle est reconnue par son contenu),
    OU indiquez son dossier dans config.ini :
        rom_dir = D:\Jeux\roms
-3. Lancez pokeblack2.exe.
+3. Lancez {EXE}.exe.
 
 Commandes
 ---------
@@ -30,19 +29,18 @@ Commandes
 
 Sauvegarde
 ----------
-La partie est enregistree (menu du jeu > Sauvegarder) dans pokeblack2.sav,
+La partie est enregistree (menu du jeu > Sauvegarder) dans {EXE}.sav,
 a cote de l'exe. Gardez une copie de ce fichier pour ne pas perdre votre
 partie.
 
 En cas de probleme
 ------------------
-Le fichier pokeblack2.log (a cote de l'exe) decrit ce qui s'est passe. Si
+Le fichier {EXE}.log (a cote de l'exe) decrit ce qui s'est passe. Si
 le jeu s'arrete, une fenetre l'indique.
 
 Limites connues
 ---------------
-- Jeu en anglais uniquement pour l'instant.
-- Pas de fonctions sans fil (Wi-Fi, C-Gear en ligne, echanges).
+{LIMITE_LANGUE}- Pas de fonctions sans fil (Wi-Fi, C-Gear en ligne, echanges).
 - Version en cours de developpement : l'histoire a ete verifiee jusqu'a la
   Route 19 (premiers combats, capture) ; la suite peut contenir des bugs.
 

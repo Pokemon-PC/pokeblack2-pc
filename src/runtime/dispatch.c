@@ -94,3 +94,40 @@ void call_addr(u32 addr) {
     }
     rt_fatal("call to 0x%08X: no loaded overlay has this function", addr);
 }
+
+/* Black 2 addresses known to the runtime (thread info, ARM7 handshake...)
+ * in the game that was compiled: identity for Black 2; for White 2 the code
+ * moved after the version blocks (tools/recomp/w2addr.py, rc_addrmap.c) */
+extern const u32 gAddrMap[][2];
+extern const unsigned gAddrMapCount;
+extern const u32 gBssStart, gBssEnd;
+extern const s32 gBssDelta;
+
+u32 pb2_addr(u32 b2) {
+    if (b2 >= gBssStart && b2 < gBssEnd) {
+        return (u32)((s32)b2 + gBssDelta);
+    }
+    unsigned lo = 0, hi = gAddrMapCount;            /* last function starting at or before b2 */
+    while (lo < hi) {
+        unsigned mid = (lo + hi) / 2;
+        if (gAddrMap[mid][0] <= b2) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    return lo ? b2 + (gAddrMap[lo - 1][1] - gAddrMap[lo - 1][0]) : b2;
+}
+
+u32 pb2_b2addr(u32 a) {                             /* the other way (code addresses) */
+    unsigned lo = 0, hi = gAddrMapCount;
+    while (lo < hi) {
+        unsigned mid = (lo + hi) / 2;
+        if (gAddrMap[mid][1] <= a) {
+            lo = mid + 1;
+        } else {
+            hi = mid;
+        }
+    }
+    return lo ? a - (gAddrMap[lo - 1][1] - gAddrMap[lo - 1][0]) : a;
+}
