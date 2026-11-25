@@ -3,7 +3,9 @@
  * the ARM9 binary (still compressed: the game's crt0 unpacks it) at its RAM
  * address, the cartridge header at 0x027FFE00, then the game's _start.
  *
- * Usage: pokeblack2 <rom.nds>     (Pokemon Black 2 USA/Europe, IREO)
+ * Usage: pokeblack2 [rom.nds] [--rom-dir DIR]   (Pokemon Black 2 USA/Europe, IREO;
+ *        without a path the ROM is looked for next to the exe, then in the
+ *        rom_dir of config.ini or PB2_ROM_DIR: see config.c)
  * Env:   PB2_TRACE=1   log the first access to each I/O register
  */
 #include "rt.h"
@@ -13,15 +15,22 @@
 #include <string.h>
 
 int main(int argc, char **argv) {
-    if (argc < 2) {
-        fprintf(stderr, "usage: pokeblack2 <your Pokemon Black 2 ROM (.nds, USA/Europe)>\n");
+    void config_load(void);
+    const char *config_find_rom(int argc, char **argv);
+    const char *config_rom_dir(void);
+    config_load();
+    const char *rom = config_find_rom(argc, argv);
+    if (!rom) {
+        fprintf(stderr,
+                "Pokemon Black 2 (English, USA/Europe) ROM not found: give its path, put it next to\n"
+                "the exe, or set rom_dir in config.ini (now: \"%s\").\n", config_rom_dir());
         return 2;
     }
     gTrace = getenv("PB2_TRACE") != NULL;
     void watchdog_start(void);
     watchdog_start();
     mem_init();
-    rom_load(argv[1]);
+    rom_load(rom);
     cpu_init();
     io_init();
     arm7_init();

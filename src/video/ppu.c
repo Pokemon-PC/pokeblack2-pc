@@ -739,14 +739,13 @@ static void render_graphics(Engine *e, u32 dispcnt, int line, u16 *out) {
     compose_line(e, dispcnt, line, &l, bg_on, out);
 }
 
-void pc_ppu_render_frame(void) {
-    HDma dma[4];
-    hdma_begin(dma);
-    {
-        u32 dispcnt_a = r32(0x04000000);
-        if ((dispcnt_a & 8) && (dispcnt_a & 0x100)) {
-            pc_gpu3d_render();
-        }
+/* ---- frame in three steps, so that the runtime can draw each scanline at
+ * its time (io.c): registers changed by H-Blank DMA / interrupts between
+ * lines then show, like on the DS */
+void pc_ppu_begin_frame(void) {
+    u32 dispcnt_a = r32(0x04000000);
+    if ((dispcnt_a & 8) && (dispcnt_a & 0x100)) {
+        pc_gpu3d_render();
     }
     capture_begin();
     for (int i = 0; i < 2; i++) {
@@ -755,32 +754,34 @@ void pc_ppu_render_frame(void) {
         pc_vram_obj_ext_palettes(i, s_eng[i].obj_ext);
         affine_reload(&s_eng[i], TRUE);
     }
-    for (int line = 0; line < H; line++) {
-        pc_hw_set_vcount((u16)line);
-        for (int i = 0; i < 2; i++) {
-            affine_reload(&s_eng[i], FALSE);
-            render_line(&s_eng[i], line, s_lines[i][line]);
-            affine_advance(&s_eng[i]);
-        }
-        /* H-Blank after the line: DMA, then the interrupt if enabled. */
-        hdma_step(dma);
-        if (r16(0x04000004) & 0x10) {
-            pc_nitro_os_dispatch_irq(OS_IE_H_BLANK);
-        }
+}
+
+void pc_ppu_render_line(int line) {
+    for (int i = 0; i < 2; i++) {
+        affine_reload(&s_eng[i], FALSE);
+        render_line(&s_eng[i], line, s_lines[i][line]);
+        affine_advance(&s_eng[i]);
     }
-
-    capture_end();
-
-    /* Master brightness, then engine A goes to the top screen when
-     * POWCNT1 bit 15 is set, otherwise to the bottom one. */
+    /* master brightness and engine A/B to top/bottom at this line */
     BOOL a_on_top = (r16(0x04000304) >> 15) & 1;
     for (int i = 0; i < 2; i++) {
         u16 mb = r16(s_eng[i].reg + 0x6C);
-        uint32_t *fb = pc_gfx_framebuffer((i == 0) == a_on_top ? PC_SCREEN_TOP : PC_SCREEN_BOTTOM);
-        for (int line = 0; line < H; line++) {
-            for (int x = 0; x < W; x++) {
-                fb[line * W + x] = to_rgba(master_bright(s_lines[i][line][x], mb));
-            }
+        uint32_t *fb = pc_gfx_framebuffer((i == 0) == a_on_top ? PC_SCREEN_TOP : PC_SCREEN_BOTTOM) + line * W;
+        for (int x = 0; x < W; x++) {
+            fb[x] = to_rgba(master_bright(s_lines[i][line][x], mb));
         }
     }
+}
+
+void pc_ppu_end_frame(void) {
+    capture_end();
+}
+
+/* The whole frame at once from the current state (benchmark, tests). */
+void pc_ppu_render_frame(void) {
+    pc_ppu_begin_frame();
+    for (int line = 0; line < H; line++) {
+        pc_ppu_render_line(line);
+    }
+    pc_ppu_end_frame();
 }

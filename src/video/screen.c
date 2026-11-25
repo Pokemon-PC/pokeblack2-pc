@@ -261,8 +261,7 @@ void video_frame(void) {
         rt_log("bench frame %u: drawing %.2f ms (old 3D rasteriser %.2f ms)", sFrames, tot[0] / 10, tot[1] / 10);
         exit(0);
     }
-    u64 t0 = SDL_GetPerformanceCounter();
-    pc_ppu_render_frame();
+    u64 t0 = SDL_GetPerformanceCounter();      /* the frame was drawn line by line (io.c) */
     if (perf) {
         u64 t1 = SDL_GetPerformanceCounter();
         tRender += t1 - t0;

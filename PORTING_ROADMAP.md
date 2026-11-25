@@ -122,8 +122,7 @@ CRT (le chien de garde ne se bloque plus), crash : `TerminateProcess`.
 Résultat : nouvelle partie jusqu'à la ville de départ en 3D, dialogues sur le
 terrain (frame ~14000 avec les touches scriptées).
 
-Reste (R6) : H-Blank,
-parcours complet, paquet (exe + README, données lues dans la ROM du
+Reste (R6) : parcours complet, paquet (exe + README, données lues dans la ROM du
 joueur), Linux. `PB2_WATCHFROM=frame` limite `PB2_WATCHADDR` aux écritures
 après une frame.
 
@@ -208,6 +207,28 @@ Centre Pokémon. Corrections :
 À surveiller : un crash isolé (lecture à 0x8, hors de l'exécutable) juste
 après CONTINUE, non reproduit en 7 essais.
 
+## Rendu ligne par ligne (2026-11-25)
+
+Chaque ligne de balayage est dessinée quand le faisceau l'atteint
+(`io.c` → `pc_ppu_render_line`), avant le DMA et l'interruption H-Blank de
+cette ligne : ce que le jeu change entre deux lignes (gestionnaire H-Blank,
+toujours actif dans ce jeu, DMA H-Blank) apparaît comme sur DS. La 3D est
+rendue au début de l'image, la luminosité maîtresse est appliquée par ligne.
+`PB2_FRAMERENDER=1` revient au rendu de toute l'image au V-Blank. Sur les 28
+images de référence, 25 sont identiques ; 3 (survol de Pavonnay) ne
+diffèrent que par quelques sprites (feuilles). Le premier combat s'affiche
+de la même façon. Journal : première utilisation d'un DMA H-Blank et de
+l'interruption H-Blank.
+
+## Suite de l'histoire jusqu'à la Route 19 (2026-11-25)
+
+`tests/continue_to_route19.keys` (depuis la sauvegarde du premier test) :
+Centre Pokémon et boutique, Poké Balls, Chaussures de course et Carte,
+porte de la Route 19, puis la leçon de capture de Bianca : combat sauvage,
+menu du sac, lancer de Poké Ball, animation de capture, « Gotcha! Purrloin
+was caught! » ; le joueur est ensuite libre sur la Route 19. Aucune
+correction n'a été nécessaire pour ce tronçon.
+
 ## Ce qu'il faut pour R3
 
 - La **ROM anglaise** visée par le désassemblage : Noire 2
@@ -231,11 +252,21 @@ après CONTINUE, non reproduit en 7 essais.
 - Taille : un projet plus gros que le port HeartGold ; l'essai s'arrête si
   l'écran titre n'est pas atteignable.
 
+## ROM : `rom_dir` (2026-11-25)
+
+Les ROM sont désormais toutes dans `D:\LUC\pokemonall\roms\`. Le jeu lit
+`config.ini` (créé à côté de l'exe avec `rom_dir =` vide) et cherche la ROM :
+argument, dossier de l'exe, puis `rom_dir` (`PB2_ROM_DIR`, `--rom-dir`) ; il
+la reconnaît par l'en-tête (`POKEMON B2`, `IREO`), pas par le nom
+(`src/runtime/config.c`, `README.md`). Localement :
+`build/pc/config.ini` → `rom_dir = D:\LUC\pokemonall\roms`.
+
 ## Commandes
 
 ```
 python tools/recomp/recomp.py ../pokeblack2 build/rc --extra lib/asm/crt0.s [--version black2|white2]
 cmake --build build/pc
-cd build && PB2_WATCH=10 pc/pokeblack2.exe "<ROM Noire 2 anglaise>.nds"
+build/pc/pokeblack2.exe            # ROM trouvée via rom_dir de build/pc/config.ini
+build/pc/pokeblack2.exe <rom.nds>  # ou un chemin explicite
 ls build/rc/*.c | xargs -P 16 -I{} clang -fsyntax-only -w -Isrc/runtime -Ibuild/rc {}
 ```

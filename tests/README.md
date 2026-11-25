@@ -1,5 +1,8 @@
 # Tests par touches scriptées
 
+La ROM est trouvée par `rom_dir` (`build/pc/config.ini`, ici
+`D:\LUC\pokemonall\roms`) ou donnée en argument.
+
 Chaque fichier `.keys` est une valeur de `PB2_KEYS` (`frame:touches,...`,
 voir `src/video/screen.c`). Avec `PB2_RTC` fixé, une exécution donne toujours
 les mêmes images.
@@ -9,7 +12,7 @@ les mêmes images.
   SAVE → Oui. Vers la frame 22 400 : « AAAAAAA saved the game. »
 
 ```
-PB2_RTC=2026-11-25-14:00 PB2_HEADLESS=1 PB2_SAVE=test.sav PB2_KEYS="$(cat tests/new_game_then_save.keys)" PB2_SHOT=22800:fin.bmp build/pc/pokeblack2.exe <ROM>
+PB2_RTC=2026-11-25-14:00 PB2_HEADLESS=1 PB2_SAVE=test.sav PB2_KEYS="$(cat tests/new_game_then_save.keys)" PB2_SHOT=22800:fin.bmp build/pc/pokeblack2.exe
 ```
 
 Rechargement : même `PB2_SAVE`, puis
@@ -21,3 +24,8 @@ la maison à Pavonnay.
   Matis, École des Dresseurs, escalier du belvédère, Bianca, choix de
   Gruikui (surnom « AAAAAAA… »), Pokédex, combat contre Matis (~20 700 à
   24 500 : Charge, Mimi-Queue, victoire), puis Centre Pokémon (~29 000).
+- `continue_to_route19.keys` : même départ, puis la suite de l'histoire :
+  Centre Pokémon (PC, boutique, Poké Balls), la mère (Chaussures de course,
+  Carte), porte de la Route 19 (Potion), leçon de capture de Bianca
+  (Chacripan sauvage, sac, Poké Ball, « Gotcha! », ~41 500), joueur libre
+  sur la Route 19 (~43 500).

@@ -9,7 +9,9 @@
 #include "../video/video.h"
 #include "../video/gpu3d.h"
 #include "../video/vram.h"
+#include "../video/ppu.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 #define REG8(a)  (*(volatile u8 *)(uintptr_t)(a))
@@ -95,6 +97,13 @@ static void dma_run(int ch) {
     int dmode = (cnt >> 21) & 3, smode = (cnt >> 23) & 3;
     int step = wide ? 4 : 2;
     int timing = (cnt >> 27) & 7;
+    if (timing == 2) {
+        static u32 said;
+        if (!(said & (1u << ch))) {
+            said |= 1u << ch;
+            rt_log("H-Blank DMA %d first used: %08X -> %08X, %u units, cnt %08X", ch, src, dst, n, cnt);
+        }
+    }
     if (timing == 7) {          /* geometry FIFO: 112 words per burst, here all at once */
         dmode = 2;
     }
@@ -169,6 +178,7 @@ void loop_tick(void) {
 }
 
 static void gx_fifo_irq(void);
+static int sFrameBegun;
 void time_advance_line(void) {
     sLine++;
     if (sLine >= LINES) {
@@ -187,9 +197,30 @@ void time_advance_line(void) {
         stat |= 4;
     }
     REG16(0x04000004) = stat;
+    /* each scanline is drawn when the beam reaches it, before its H-Blank
+     * (DMA, interrupt) changes registers for the next one; PB2_FRAMERENDER=1
+     * draws the whole frame at V-Blank instead */
+    static int sLineRender = -1;
+    if (sLineRender < 0) {
+        sLineRender = getenv("PB2_FRAMERENDER") == NULL;
+    }
+    if (sLineRender && sLine < 192) {
+        if (sLine == 0) {
+            pc_ppu_begin_frame();
+            sFrameBegun = 1;
+        }
+        if (sFrameBegun) {
+            pc_ppu_render_line((int)sLine);
+        }
+    }
     if (sLine == 192) {
         /* the ARM7 counts VBlanks in the system area (OS_GetVBlankCount) */
         (*(volatile u32 *)(uintptr_t)0x027FFC3C)++;
+        if (!sLineRender) {
+            pc_ppu_render_frame();
+        } else if (sFrameBegun) {
+            pc_ppu_end_frame();
+        }
         video_frame();
         if (stat & 0x08) {
             REG32(0x04000214) |= 1;
@@ -199,6 +230,10 @@ void time_advance_line(void) {
     if (sLine < 192) {
         dma_trigger(2);
         if (stat & 0x10) {
+            static int said;
+            if (!said++) {
+                rt_log("H-Blank interrupt first enabled (IE %08X)", REG32(0x04000210));
+            }
             REG32(0x04000214) |= 2;
         }
     }
