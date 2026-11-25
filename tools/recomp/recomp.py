@@ -120,8 +120,26 @@ def parse_file(path):
     mode = None
     addr = None
     in_text = True
+    active = [True]           # #if defined(X) / #else / #endif (version blocks)
     for raw in open(path, encoding="utf-8", errors="replace"):
         line = raw.rstrip("\n")
+        pp = line.strip()
+        if pp.startswith("#"):
+            mi = re.match(r"^#if\s+defined\((\w+)\)\s*$", pp)
+            if mi:
+                active.append(active[-1] and mi.group(1) in DEFINES)
+            elif pp.startswith("#else"):
+                parent = active[-2] if len(active) > 1 else True
+                active[-1] = parent and not active[-1]
+            elif pp.startswith("#endif"):
+                active.pop()
+            elif pp.startswith("#include"):
+                pass                  # config.h: only the version macros used above
+            else:
+                raise SystemExit(f"{path}: unsupported preprocessor line: {pp}")
+            continue
+        if not active[-1]:
+            continue
         code, _, comment = line.partition(";")
         s = code.strip()
         comment = comment.strip()
@@ -237,6 +255,18 @@ def reg(x):
     raise Untranslatable(f"register {x}")
 
 
+# Game/SDK functions whose body the runtime provides (src/runtime/hle.c):
+# spin-waits on the ARM7 and the thread context switches.
+HLE = {
+    "FUN_0203CB94": "game assertion handler (message logged, then fatal)",
+    "FUN_0207CA48": "PXI_IsCallbackReady: the reproduced ARM7 is always ready",
+    "FUN_01FF8CE0": "thread switch in the IRQ handler (context save/load ^)",
+    "FUN_0207ABBC": "OS_LoadContext (ldmia ^)",
+    "FUN_0207AB70": "OS_SaveContext (returns twice: host fibers)",
+    "OS_Terminate": "logged (where the game stopped), then halts like the original",
+}
+
+DEFINES = {"BLACK2"}           # asm "#if defined(...)" blocks; WHITE2 with --version white2
 CONSTS = {"GAME_VERSION": 23}      # VERSION_BLACK2 (22 = White 2), set by --version
 
 
@@ -263,6 +293,10 @@ def rv(n, ins):
 
 
 class FuncGen:
+    func_names = set()       # every function name of the asm
+    continuations = set()    # functions that are the split-off rest of the previous one
+    inner_labels = set()     # labels inside functions (not function names)
+
     def __init__(self, f, cname, resolver, fileid):
         self.f = f
         self.cname = cname
@@ -275,12 +309,23 @@ class FuncGen:
                 self.labels[it[1]] = it[2]
                 if it[2] is not None:
                     self.label_addr.setdefault(it[2], "L_" + it[1].replace(".", "_"))
+        # "add pc, pc, rN": a computed jump into the middle of unrolled code
+        # (division, fill loops): every instruction becomes a jump target
+        self.computed = any(it[0] == "insn" and it[1] is not None and
+                            re.match(r"^add\w*\s+pc\s*,\s*pc\s*,\s*(r\d|ip|sb|sl|fp|lr)", it[1].text.strip())
+                            for it in f["items"])
+        if self.computed:
+            for it in f["items"]:
+                if it[0] == "insn" and it[1] is not None and it[1].addr is not None:
+                    self.label_addr.setdefault(it[1].addr, f"L_i_{it[1].addr:08X}")
         self.out = []
         self.unimpl = 0
         self.popped = set()
 
     # ---- flag liveness (backward over the linear code, conservative)
     def liveness(self, insns):
+        if self.computed:
+            return [ins is not None and self.sets_flags(ins) for ins in insns]
         needed = [False] * len(insns)
         live = False
         for i in range(len(insns) - 1, -1, -1):
@@ -403,7 +448,12 @@ class FuncGen:
         if op == "b":
             kind, t = self.branch_target(a[0], ins)
             if kind == "goto":
-                self.cond_wrap(ins, [f"goto {t};"])
+                tgt = self.labels.get(a[0].strip())
+                if tgt is not None and ins.addr is not None and tgt <= ins.addr:
+                    # a loop: time passes (IRQs, scanlines) as on the DS
+                    self.cond_wrap(ins, ["LOOP_TICK();", f"goto {t};"])
+                else:
+                    self.cond_wrap(ins, [f"goto {t};"])
             else:
                 self.cond_wrap(ins, [f"{t}; return;"])
             return
@@ -414,6 +464,18 @@ class FuncGen:
                     and not re.match(r"^(FUN|sub)_", name):
                 self.cond_wrap(ins, [f"LR = 0x{ret:08X}u;", f"goto {self.label_addr[self.labels[name]]};"])
                 return
+            # Thumb "bl" as a long branch (b reaches only +-2 KiB): the compiler
+            # jumps to a label of a function the disassembler split off, or back
+            # to the start of such a continuation; the stack frame is the caller's
+            if T and op == "bl":
+                if name == self.f["name"] and name in FuncGen.continuations:
+                    self.cond_wrap(ins, [f"LR = 0x{ret:08X}u;", "LOOP_TICK();",
+                                         f"goto {self.label_addr[self.labels[name]]};"])
+                    return
+                if (name in FuncGen.inner_labels and name not in self.labels) or name in FuncGen.continuations:
+                    t = self.resolve(name, self.fileid)
+                    self.cond_wrap(ins, [f"LR = 0x{ret:08X}u;", f"{t}; return;"])
+                    return
             t = self.resolve(name, self.fileid)
             self.cond_wrap(ins, [f"LR = 0x{ret:08X}u;", f"{t};"])
             return
@@ -605,7 +667,11 @@ class FuncGen:
             else:
                 self.cond_wrap(ins, self.set_pc(ins, e))
             return
-        # ARM "mov lr, pc" before an indirect jump: the jump is a call
+        # a copy of lr holds the return address: "bx" to it is a return
+        if op == "mov" and len(a) == 2 and a[1].strip().lower() == "lr":
+            self.popped.add(d)
+        elif d in self.popped and d != 14:
+            self.popped.discard(d)
         self.cond_wrap(ins, [f"R({d}) = {e};"])
 
     def ldr_str(self, ins):
@@ -710,6 +776,12 @@ class FuncGen:
         self.cond_wrap(ins, body)
 
     def generate(self):
+        base = self.f["name"]
+        if base in HLE:
+            return [f"void {self.cname}(void) {{",
+                    f"    /* replaced by the runtime: {HLE[base]} */",
+                    f"    hle_{self.cname}();",
+                    "}"]
         items = self.f["items"]
         seq = [it[1] if it[0] == "insn" else None for it in items]
         insns = [s for s in seq]
@@ -717,7 +789,14 @@ class FuncGen:
         self.out.append(f"void {self.cname}(void) {{")
         a = self.f["addr"]
         self.out.append(f"    /* 0x{a:08X} {'thumb' if self.f['thumb'] else 'arm'} */" if a is not None else "    /* ? */")
+        if a is not None:
+            self.out.append(f"    FN_ENTER(0x{a | (1 if self.f['thumb'] else 0):08X}u);")
+        entry = getattr(self, "entry_label", None)
+        if entry:
+            # secondary entry: another function branches to this label
+            self.out.append(f"    goto {self.label_addr[self.labels[entry]]};")
         prev_mov_lr_pc = False
+        prev_ldr_lr = False
         emitted = set()
         for idx, it in enumerate(items):
             if it[0] == "label":
@@ -728,6 +807,23 @@ class FuncGen:
                 continue
             if it[0] == "data":
                 d = it[1]
+                # SWP / SWPB written as raw words (the original assembler lacked them)
+                mw = re.match(r"^\.word\s+(0x[0-9A-Fa-f]{8})\s*$", d)
+                if mw and not self.f["thumb"]:
+                    v = int(mw.group(1), 16)
+                    if (v & 0x0FB00FF0) == 0x01000090:
+                        rn, rd, rm = (v >> 16) & 15, (v >> 12) & 15, v & 15
+                        byte = (v >> 22) & 1
+                        rdf, wrf = ("rd8", "wr8") if byte else ("rd32", "wr32")
+                        body = [f"{{ u32 a_ = R({rn}); u32 t_ = {rdf}(a_); {wrf}(a_, R({rm})); R({rd}) = t_; }}"]
+                        cond = v >> 28
+                        if cond != 0xE:
+                            names = ["EQ", "NE", "HS", "LO", "MI", "PL", "VS", "VC", "HI", "LS", "GE", "LT", "GT", "LE"]
+                            body = [f"if (C_{names[cond]}) " + body[0]]
+                        self.emit(f"/* swp{'b' if byte else ''} (raw 0x{v:08X}) */")
+                        for b in body:
+                            self.emit(b)
+                        continue
                 if d.startswith(".byte") and not self.f["thumb"]:
                     vals = [int(v, 0) for v in split_args(d.split(None, 1)[1])]
                     if vals[:8] == [0x00, 0xC0, 0x9F, 0xE5, 0x1C, 0xFF, 0x2F, 0xE1]:
@@ -735,6 +831,11 @@ class FuncGen:
                         self.veneer = True
                 continue
             ins = it[1]
+            if self.computed and ins is not None and ins.addr is not None:
+                lb = self.label_addr.get(ins.addr)
+                if lb and lb.startswith("L_i_") and lb not in emitted:
+                    emitted.add(lb)
+                    self.out.append(f"{lb}:;")
             try:
                 if getattr(self, "veneer", False) and ins is None:
                     pass
@@ -749,6 +850,15 @@ class FuncGen:
                     self.emit(f"{{ u32 t_ = rd32({addr}); LR = 0x{ins.addr + 4:08X}u; call_addr(t_); }}")
                     prev_mov_lr_pc = False
                     continue
+                # "ldr lr, =X ; bx rN": rN returns to X, then X runs (IRQ handler epilogue)
+                if prev_ldr_lr and ins.op == "bx" and ins.cond == "al" and reg(ins.args[0]) != 14:
+                    n = reg(ins.args[0])
+                    self.emit(f"{{ u32 r_ = LR; call_addr(R({n})); call_addr(r_); return; }}")
+                    prev_ldr_lr = False
+                    prev_mov_lr_pc = False
+                    continue
+                prev_ldr_lr = (ins.op == "ldr" and ins.cond == "al" and len(ins.args) >= 2
+                               and ins.args[0].strip() == "lr")
                 prev_mov_lr_pc = (ins.op == "mov" and not ins.thumb and len(ins.args) == 2
                                   and ins.args[0].strip() == "lr" and ins.args[1].strip() == "pc")
                 if ins.op == "?":
@@ -770,6 +880,38 @@ class FuncGen:
 
 # ---------------------------------------------------------------- driver
 
+def ends_open(f):
+    """the function's last instruction lets execution run into the next one"""
+    for it in reversed(f["items"]):
+        if it[0] == "label":
+            continue
+        if it[0] == "data":
+            if it[1].startswith((".balign", ".align")):
+                continue
+            return False                 # literal pool
+        ins = it[1]
+        if ins.op == "nop":
+            continue
+        a = [x.strip().lower() for x in ins.args]
+        if ins.cond == "al":
+            if ins.op in ("b", "bx"):
+                return False
+            if ins.op in ("pop", "ldm") and "pc" in ins.text.lower().split(",", 1)[-1]:
+                return False
+            if a and a[0] == "pc":
+                return False
+        return True
+    return False
+
+
+def write_if_changed(path, text):
+    """keeps the file (and its object) when the translation did not change"""
+    if os.path.exists(path) and open(path, encoding="utf-8").read() == text:
+        return
+    with open(path, "w", encoding="utf-8", newline="\n") as o:
+        o.write(text)
+
+
 def cname_for(fileid, name):
     pre = "" if fileid in ("main", "itcm", "dtcm", "ltdmain", "middleware") else fileid + "_"
     return pre + re.sub(r"\W", "_", name)
@@ -780,16 +922,33 @@ def main():
     ap.add_argument("repo")
     ap.add_argument("out")
     ap.add_argument("--files", nargs="*", default=None, help="asm file ids (default: all)")
+    ap.add_argument("--extra", nargs="*", default=["lib/asm/crt0.s"],
+                    help="other asm files of the repository, translated as part of main")
     ap.add_argument("--chunk", type=int, default=600)
     ap.add_argument("--version", choices=["black2", "white2"], default="black2")
     a = ap.parse_args()
     CONSTS["GAME_VERSION"] = 23 if a.version == "black2" else 22
+    DEFINES.clear()
+    DEFINES.add("BLACK2" if a.version == "black2" else "WHITE2")
 
     asm_dir = os.path.join(a.repo, "asm")
     ids = a.files or sorted(os.path.splitext(n)[0] for n in os.listdir(asm_dir) if n.endswith(".s"))
     files = {}
     for fid in ids:
         files[fid] = parse_file(os.path.join(asm_dir, fid + ".s"))
+    for extra in a.extra:
+        files["main"] = files.get("main", []) + parse_file(os.path.join(a.repo, extra))
+
+    for fid, fs in files.items():
+        for i, f in enumerate(fs):
+            FuncGen.func_names.add(f["name"])
+            FuncGen.inner_labels.update(it[1] for it in f["items"] if it[0] == "label" and it[1] != f["name"])
+            if i and f["thumb"] and fs[i - 1]["thumb"] and ends_open(fs[i - 1]):
+                first = next((it[1] for it in f["items"] if it[0] == "insn"), None)
+                if first is not None and first.op not in ("push", "stm"):
+                    FuncGen.continuations.add(f["name"])
+    FuncGen.inner_labels -= FuncGen.func_names
+    print("split-off continuations:", " ".join(sorted(FuncGen.continuations)))
 
     glob_names = {}
     for fid in ("main", "itcm", "dtcm", "ltdmain", "middleware"):
@@ -810,6 +969,31 @@ def main():
         if m:
             return f"call_addr(0x{m.group(1)}u)"
         raise Untranslatable("symbol " + name)
+
+    # labels branched to from another function: secondary entry points
+    BR = re.compile(r"^b(l|lx)?(eq|ne|hs|cs|lo|cc|mi|pl|vs|vc|hi|ls|ge|lt|gt|le|al)?(\.n|\.w)?$")
+    entries = {}                       # fid -> {label: (func, addr)}
+    for fid, fs in files.items():
+        owner = {}
+        for f in fs:
+            for it in f["items"]:
+                if it[0] == "label" and it[2] is not None and it[1] != f["name"]:
+                    owner[it[1]] = (f, it[2])
+        for f in fs:
+            for it in f["items"]:
+                if it[0] != "insn" or it[1] is None or not BR.match(it[1].op or ""):
+                    continue
+                if not it[1].args:
+                    continue
+                tgt = it[1].args[0].strip()
+                if tgt in owner and owner[tgt][0] is not f:
+                    entries.setdefault(fid, {})[tgt] = owner[tgt]
+    for fid, es in entries.items():
+        for lab in es:
+            cn = cname_for(fid, es[lab][0]["name"]) + "__" + re.sub(r"\W", "_", lab)
+            local.setdefault(fid, {})[lab] = cn
+            if fid in ("main", "itcm", "dtcm", "ltdmain", "middleware"):
+                glob_names[lab] = cn
 
     os.makedirs(a.out, exist_ok=True)
     total_ins = total_unimpl = 0
@@ -839,10 +1023,21 @@ def main():
                 decls.append(f"void {cn}(void);")
                 if f["addr"] is not None:
                     dispatch.append((f["addr"] | (1 if f["thumb"] else 0), fid, cn))
-            with open(os.path.join(a.out, f"rc_{fid}_{ci}.c"), "w", encoding="utf-8", newline="\n") as o:
-                o.write("\n".join(lines) + "\n")
-    with open(os.path.join(a.out, "rc_decls.h"), "w", encoding="utf-8", newline="\n") as o:
-        o.write("/* generated by tools/recomp/recomp.py */\n#pragma once\n" + "\n".join(sorted(set(decls))) + "\n")
+                for lab, (ef, eaddr) in entries.get(fid, {}).items():
+                    if ef is not f or f["name"] in HLE:
+                        continue
+                    ecn = local[fid][lab]
+                    eg = FuncGen(f, ecn, resolve, fid)
+                    eg.entry_label = lab
+                    lines.extend(eg.generate())
+                    lines.append("")
+                    decls.append(f"void {ecn}(void);")
+                    dispatch.append((eaddr | (1 if f["thumb"] else 0), fid, ecn))
+            write_if_changed(os.path.join(a.out, f"rc_{fid}_{ci}.c"), "\n".join(lines) + "\n")
+    hle_decls = [f"void hle_{n}(void);" for n in HLE]
+    write_if_changed(os.path.join(a.out, "rc_decls.h"),
+                     "/* generated by tools/recomp/recomp.py */\n#pragma once\n"
+                     + "\n".join(sorted(set(decls)) + hle_decls) + "\n")
     with open(os.path.join(a.out, "rc_dispatch.c"), "w", encoding="utf-8", newline="\n") as o:
         o.write('#include "cpu.h"\n#include "rc_decls.h"\n#include "dispatch.h"\n\n')
         o.write("const DispatchEntry gDispatch[] = {\n")

@@ -29,6 +29,21 @@ typedef struct Cpu {
 
 extern Cpu g;
 
+/* PB2_FNTRACE: the last function entries (address, lr), shown by the
+ * watchdog and the crash handler */
+#define FNTRACE_N 256
+extern int gFnTrace;
+extern u32 gFnRing[FNTRACE_N][2];
+extern unsigned gFnPos;
+#define FN_ENTER(addr) do { if (gFnTrace) { gFnRing[gFnPos % FNTRACE_N][0] = (addr); \
+    gFnRing[gFnPos % FNTRACE_N][1] = g.r[14]; gFnPos++; } } while (0)
+
+/* backward branches: every LOOP_BUDGET iterations a scanline passes and
+ * interrupts are delivered, so that loops waiting for an IRQ-driven flag end */
+extern int gLoopBudget;
+void loop_tick(void);
+#define LOOP_TICK() do { if (--gLoopBudget < 0) loop_tick(); } while (0)
+
 #define R(i) g.r[i]
 #define SP g.r[13]
 #define LR g.r[14]
