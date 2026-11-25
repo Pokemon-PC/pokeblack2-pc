@@ -148,3 +148,23 @@ const char *config_find_rom(int argc, char **argv) {
 const char *config_rom_dir(void) {
     return sRomDir;
 }
+
+const char *config_exe_dir(void) {
+    if (!sExeDir[0]) {
+        GetModuleFileNameA(NULL, sExeDir, sizeof sExeDir);
+        char *slash = strrchr(sExeDir, '\\');
+        if (slash) {
+            *slash = 0;
+        }
+    }
+    return sExeDir;
+}
+
+/* an error the player must see: console, or a message box without one */
+void config_message(const char *msg) {
+    fputs(msg, stderr);
+    fputc('\n', stderr);
+    if (!GetConsoleWindow() && !getenv("PB2_HEADLESS")) {
+        MessageBoxA(NULL, msg, "Pokemon Black 2 (PC)", MB_OK | MB_ICONERROR);
+    }
+}

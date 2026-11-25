@@ -30,7 +30,7 @@ Le lanceur règle `rom_dir` ; sur la machine de développement :
 `rom_dir = D:\LUC\pokemonall\roms`.
 
 La sauvegarde est `pokeblack2.sav` (512 Kio, image brute de la mémoire flash),
-dans le dossier courant (`PB2_SAVE=fichier` pour un autre).
+à côté de l'exe (`PB2_SAVE=fichier` pour un autre).
 
 ## Compiler
 
@@ -39,6 +39,18 @@ python tools/recomp/recomp.py ../pokeblack2 build/rc --extra lib/asm/crt0.s
 cmake -S . -B build/pc -G Ninja -DCMAKE_C_COMPILER=clang
 cmake --build build/pc
 ```
+
+## Paquet pour les joueurs
+
+```
+cmake -S . -B build/release -G Ninja -DCMAKE_C_COMPILER=clang -DPB2_RELEASE=ON
+cmake --build build/release
+python tools/package.py        # dist/PokemonNoire2-PC-<date>.zip
+```
+
+Le zip contient l'exe (sans console, SDL2 inclus), `config.ini` et
+`LISEZMOI.txt` ; jamais de ROM ni de sauvegarde (le script le vérifie).
+La sauvegarde et `pokeblack2.log` sont écrits à côté de l'exe.
 
 ## Jouer
 

@@ -109,8 +109,17 @@ static void pm_command(u32 data) {
 static u8 *sSave;
 static u32 sCardArg;
 static const char *save_path(void) {
+    /* PB2_SAVE=file, else pokeblack2.sav next to the exe */
     const char *e = getenv("PB2_SAVE");
-    return e ? e : "pokeblack2.sav";
+    if (e) {
+        return e;
+    }
+    static char p[1100];
+    if (!p[0]) {
+        const char *config_exe_dir(void);
+        snprintf(p, sizeof p, "%s\\pokeblack2.sav", config_exe_dir());
+    }
+    return p;
 }
 static void save_load(void) {
     if (sSave) {

@@ -2,3 +2,4 @@ build/
 *.nds
 *.sav
 __pycache__/
+dist/

@@ -21,9 +21,13 @@ int main(int argc, char **argv) {
     config_load();
     const char *rom = config_find_rom(argc, argv);
     if (!rom) {
-        fprintf(stderr,
-                "Pokemon Black 2 (English, USA/Europe) ROM not found: give its path, put it next to\n"
-                "the exe, or set rom_dir in config.ini (now: \"%s\").\n", config_rom_dir());
+        void config_message(const char *msg);
+        char msg[1400];
+        snprintf(msg, sizeof msg,
+                 "Pokemon Black 2 ROM not found (English, USA/Europe: your own copy, .nds).\n\n"
+                 "Put it next to pokeblack2.exe, or write its folder in config.ini:\n"
+                 "rom_dir = <folder>   (now: \"%s\").", config_rom_dir());
+        config_message(msg);
         return 2;
     }
     gTrace = getenv("PB2_TRACE") != NULL;

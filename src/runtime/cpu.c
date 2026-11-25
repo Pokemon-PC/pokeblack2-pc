@@ -111,15 +111,20 @@ void rt_log(const char *fmt, ...) {
 }
 
 void rt_fatal(const char *fmt, ...) {
+    /* in the log (stderr or pokeblack2.log) with the stacks, then shown to
+     * the player when there is no console */
+    char msg[600];
     va_list ap;
     va_start(ap, fmt);
-    fprintf(stderr, "[pb2 %6u] FATAL: ", gFrame);
-    vfprintf(stderr, fmt, ap);
-    fputc('\n', stderr);
+    vsnprintf(msg, sizeof msg, fmt, ap);
     va_end(ap);
-    fprintf(stderr, "  pc~? r0=%08X r1=%08X r2=%08X r3=%08X sp=%08X lr=%08X\n", R(0), R(1), R(2), R(3), R(13), R(14));
-    fflush(stderr);
+    rt_log("FATAL: %s", msg);
+    rt_log("  r0=%08X r1=%08X r2=%08X r3=%08X sp=%08X lr=%08X", R(0), R(1), R(2), R(3), R(13), R(14));
     void rt_stack_here(void);
     rt_stack_here();
+    char box[800];
+    snprintf(box, sizeof box, "The game stopped: %s\n\nDetails in pokeblack2.log.", msg);
+    void config_message(const char *msg);
+    config_message(box);
     exit(3);
 }

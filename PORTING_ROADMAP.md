@@ -122,8 +122,7 @@ CRT (le chien de garde ne se bloque plus), crash : `TerminateProcess`.
 Résultat : nouvelle partie jusqu'à la ville de départ en 3D, dialogues sur le
 terrain (frame ~14000 avec les touches scriptées).
 
-Reste (R6) : parcours complet, paquet (exe + README, données lues dans la ROM du
-joueur), Linux. `PB2_WATCHFROM=frame` limite `PB2_WATCHADDR` aux écritures
+Reste (R6) : parcours complet, Linux. `PB2_WATCHFROM=frame` limite `PB2_WATCHADDR` aux écritures
 après une frame.
 
 ## Son (2026-11-25)
@@ -260,6 +259,27 @@ argument, dossier de l'exe, puis `rom_dir` (`PB2_ROM_DIR`, `--rom-dir`) ; il
 la reconnaît par l'en-tête (`POKEMON B2`, `IREO`), pas par le nom
 (`src/runtime/config.c`, `README.md`). Localement :
 `build/pc/config.ini` → `rom_dir = D:\LUC\pokemonall\roms`.
+
+## Paquet joueur (2026-11-25)
+
+`cmake -S . -B build/release -G Ninja -DPB2_RELEASE=ON …` puis
+`python tools/package.py` → `dist/PokemonNoire2-PC/` et
+`dist/PokemonNoire2-PC-<date>.zip` (~12 Mio) : `pokeblack2.exe` (42 Mio,
+sans infos de débogage, sous-système Windows sans console, SDL2 lié
+statiquement : seulement des DLL système), `config.ini` (`rom_dir` vide),
+`LISEZMOI.txt` (installation, touches, sauvegarde, limites). Aucune donnée
+du jeu : le script refuse ROM, sauvegarde, journal, captures, et vérifie
+les DLL importées. Côté joueur : la sauvegarde `pokeblack2.sav` et le
+journal `pokeblack2.log` sont à côté de l'exe (quel que soit le dossier
+courant), une erreur (ROM absente, arrêt du jeu) s'affiche dans une
+fenêtre, le chien de garde est désactivé (`PB2_WATCH=secondes` pour
+l'activer). Vérifié depuis le zip décompressé dans un dossier neuf : ROM
+absente → message ; `rom_dir` réglé → nouvelle partie, sauvegarde en jeu,
+puis CONTINUE au redémarrage.
+
+L'exe contient le code du jeu traduit en C (comme les exe des autres ports
+contiennent le code des décompilations) mais aucune ressource : images,
+sons, textes et cartes viennent de la ROM du joueur.
 
 ## Commandes
 

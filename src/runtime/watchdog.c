@@ -11,8 +11,25 @@ static HANDLE sGameThread;
 static DWORD sGameThreadId;
 
 void rt_write_err(const char *s, int n) {
+    /* stderr, or pokeblack2.log next to the exe when there is none (the
+     * release build has no console) */
+    static HANDLE out;
+    if (!out) {
+        HANDLE h = GetStdHandle(STD_ERROR_HANDLE);
+        DWORD type = h && h != INVALID_HANDLE_VALUE ? GetFileType(h) : FILE_TYPE_UNKNOWN;
+        if (type != FILE_TYPE_UNKNOWN) {
+            out = h;
+        } else {
+            const char *config_exe_dir(void);
+            char p[MAX_PATH + 32];
+            snprintf(p, sizeof p, "%s\\pokeblack2.log", config_exe_dir());
+            out = CreateFileA(p, GENERIC_WRITE, FILE_SHARE_READ, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+        }
+    }
     DWORD w;
-    WriteFile(GetStdHandle(STD_ERROR_HANDLE), s, (DWORD)n, &w, NULL);
+    if (out && out != INVALID_HANDLE_VALUE) {
+        WriteFile(out, s, (DWORD)n, &w, NULL);
+    }
 }
 
 /* fprintf(stderr) without the CRT lock (the suspended game thread may hold it) */
@@ -237,7 +254,7 @@ void watchdog_start(void) {
         atexit(prof_dump);
     }
     const char *e = getenv("PB2_WATCH");
-    sPeriod = e ? atoi(e) : 8;
+    sPeriod = e ? atoi(e) : 0;            /* off unless PB2_WATCH=seconds */
     if (sPeriod <= 0) {
         return;
     }
