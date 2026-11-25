@@ -15,3 +15,9 @@ PB2_RTC=2026-11-25-14:00 PB2_HEADLESS=1 PB2_SAVE=test.sav PB2_KEYS="$(cat tests/
 Rechargement : même `PB2_SAVE`, puis
 `PB2_KEYS="3700:S,3706:,3900:A,3906:,4100:A,4106:"` : CONTINUE, retour dans
 la maison à Pavonnay.
+
+- `continue_to_first_battle.keys` : part de la sauvegarde faite par le test
+  précédent (`PB2_RTC=2026-11-25-16:00`) : CONTINUE, sortie de la maison,
+  Matis, École des Dresseurs, escalier du belvédère, Bianca, choix de
+  Gruikui (surnom « AAAAAAA… »), Pokédex, combat contre Matis (~20 700 à
+  24 500 : Charge, Mimi-Queue, victoire), puis Centre Pokémon (~29 000).

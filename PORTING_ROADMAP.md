@@ -123,7 +123,7 @@ Résultat : nouvelle partie jusqu'à la ville de départ en 3D, dialogues sur le
 terrain (frame ~14000 avec les touches scriptées).
 
 Reste (R6) : H-Blank,
-combats, parcours complet, paquet (exe + README, données lues dans la ROM du
+parcours complet, paquet (exe + README, données lues dans la ROM du
 joueur), Linux. `PB2_WATCHFROM=frame` limite `PB2_WATCHADDR` aux écritures
 après une frame.
 
@@ -188,6 +188,25 @@ reprend dans la maison, au même endroit. Le fichier `pokeblack2.sav` est
 l'image brute de 512 Kio de la mémoire flash de la cartouche. Les écritures
 pendant la nouvelle partie (76 blocs) ne suffisent pas à une partie :
 seule la sauvegarde du menu fait apparaître « CONTINUE », comme sur DS.
+
+## Premier combat (2026-11-25)
+
+Avec `tests/continue_to_first_battle.keys` : depuis la sauvegarde, sortie de
+la maison, Matis, belvédère, Bianca, choix de Gruikui, Pokédex, puis
+**combat contre Matis** (écran « VS. », menus tactiles FIGHT/BAG/RUN/
+POKÉMON, attaques, PV, messages, victoire) et retour sur le terrain jusqu'au
+Centre Pokémon. Corrections :
+
+- **veneers Thumb→ARM** : `bx pc ; nop` suivi d'un veneer ARM écrit en octets
+  (`ldr ip, [pc] ; bx ip`, parfois sur deux lignes `.byte`) et de l'adresse
+  cible ; le traducteur en faisait `call_addr(R(15))`, donc un appel vers 0.
+  1 134 veneers deviennent un saut vers la cible, souvent du code chargé en
+  VRAM (overlay 169 à 0x06898000, moteur de combat) ;
+- `rt_fatal` affiche la pile de l'hôte et la trace des fonctions ; un crash
+  indique le module et le fil en cause.
+
+À surveiller : un crash isolé (lecture à 0x8, hors de l'exécutable) juste
+après CONTINUE, non reproduit en 7 essais.
 
 ## Ce qu'il faut pour R3
 

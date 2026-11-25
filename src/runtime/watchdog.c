@@ -8,6 +8,7 @@
 #include <windows.h>
 
 static HANDLE sGameThread;
+static DWORD sGameThreadId;
 
 void rt_write_err(const char *s, int n) {
     DWORD w;
@@ -59,6 +60,13 @@ static void print_stack(CONTEXT c) {
         DWORD64 est;
         RtlVirtualUnwind(UNW_FLAG_NHANDLER, base, c.Rip, fn, &c, &hd, &est, NULL);
     }
+}
+
+/* where we are now (rt_fatal) */
+void rt_stack_here(void) {
+    CONTEXT c;
+    RtlCaptureContext(&c);
+    print_stack(c);
 }
 
 static DWORD WINAPI watch_main(LPVOID arg) {
@@ -119,6 +127,18 @@ static LONG WINAPI on_crash(EXCEPTION_POINTERS *ep) {
     rt_log("CRASH 0x%08lX at host 0x%llX, address 0x%llX; game r0=%08X r1=%08X r2=%08X r3=%08X r4=%08X r5=%08X sp=%08X lr=%08X",
            (unsigned long)code, (unsigned long long)(ep->ContextRecord->Rip - sBase + 0x140000000ull),
            (unsigned long long)ep->ExceptionRecord->ExceptionInformation[1], R(0), R(1), R(2), R(3), R(4), R(5), R(13), R(14));
+    {
+        /* which module and which thread (game thread, 3D band, audio...) */
+        HMODULE mod = NULL;
+        char name[MAX_PATH] = "?";
+        if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                               (LPCSTR)(uintptr_t)ep->ContextRecord->Rip, &mod)) {
+            GetModuleFileNameA(mod, name, sizeof name);
+        }
+        rt_log("crash in module %s (+0x%llX), thread %lu (game thread %lu)", name,
+               (unsigned long long)(ep->ContextRecord->Rip - (DWORD64)(uintptr_t)mod), (unsigned long)GetCurrentThreadId(),
+               (unsigned long)sGameThreadId);
+    }
     print_stack(*ep->ContextRecord);
     fflush(stdout);
     fflush(stderr);
@@ -194,6 +214,7 @@ static void prof_dump(void) {
 
 void watchdog_start(void) {
     sBase = (DWORD64)GetModuleHandleA(NULL);
+    sGameThreadId = GetCurrentThreadId();
     gFnTrace = getenv("PB2_FNTRACE") != NULL;
     AddVectoredExceptionHandler(1, on_crash);
     const char *wa = getenv("PB2_WATCHADDR");

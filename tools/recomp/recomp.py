@@ -798,6 +798,28 @@ class FuncGen:
         prev_mov_lr_pc = False
         prev_ldr_lr = False
         emitted = set()
+        # veneer "ldr ip, [pc] ; bx ip" written as bytes, target in the next
+        # .word (reached in ARM, or from Thumb through "bx pc ; nop"): a jump
+        veneer_target = None
+        for k, it in enumerate(items):
+            if it[0] == "data" and it[1].startswith(".byte"):
+                vals, j = [], k     # the 8 bytes may span several .byte lines
+                try:
+                    while j < len(items) and items[j][0] == "data" and items[j][1].startswith(".byte") and len(vals) < 8:
+                        vals += [int(v, 0) for v in split_args(items[j][1].split(None, 1)[1])]
+                        j += 1
+                except ValueError:
+                    continue
+                if vals[:8] == [0x00, 0xC0, 0x9F, 0xE5, 0x1C, 0xFF, 0x2F, 0xE1]:
+                    nxt_it = next((x for x in items[j:] if x[0] == "data"), None)
+                    mw = re.match(r"^\.word\s+(\S+)\s*$", nxt_it[1]) if nxt_it else None
+                    if mw:
+                        veneer_target = mw.group(1)
+                    break
+        veneer_call = None
+        if veneer_target:
+            mh = re.match(r"^0x([0-9A-Fa-f]+)$", veneer_target)
+            veneer_call = f"call_addr(0x{mh.group(1)}u)" if mh else self.resolve(veneer_target, self.fileid)
         for idx, it in enumerate(items):
             if it[0] == "label":
                 lb = "L_" + it[1].replace(".", "_")
@@ -824,11 +846,11 @@ class FuncGen:
                         for b in body:
                             self.emit(b)
                         continue
-                if d.startswith(".byte") and not self.f["thumb"]:
+                if d.startswith(".byte") and veneer_call and not self.f["thumb"]:
                     vals = [int(v, 0) for v in split_args(d.split(None, 1)[1])]
                     if vals[:8] == [0x00, 0xC0, 0x9F, 0xE5, 0x1C, 0xFF, 0x2F, 0xE1]:
-                        self.emit("/* veneer: ldr ip, [pc]; bx ip */")
-                        self.veneer = True
+                        self.emit(f"/* veneer: ldr ip, [pc]; bx ip -> {veneer_target} */")
+                        self.emit(f"{veneer_call}; return;")
                 continue
             ins = it[1]
             if self.computed and ins is not None and ins.addr is not None:
@@ -837,8 +859,10 @@ class FuncGen:
                     emitted.add(lb)
                     self.out.append(f"{lb}:;")
             try:
-                if getattr(self, "veneer", False) and ins is None:
-                    pass
+                if veneer_call and ins.op == "bx" and ins.args and ins.args[0].strip().lower() == "pc" and ins.thumb:
+                    self.emit(f"/* bx pc -> ARM veneer -> {veneer_target} */")
+                    self.emit(f"{veneer_call}; return;")
+                    continue
                 # ARM indirect call idiom: mov lr, pc ; bx rN / ldr pc, [...]
                 if prev_mov_lr_pc and ins.op == "bx" and ins.cond == "al":
                     n = reg(ins.args[0])
@@ -868,9 +892,6 @@ class FuncGen:
                 self.unimpl += 1
                 txt = ins.text.replace("\\", "\\\\").replace('"', '\\"')
                 self.emit(f'UNIMPL("{self.cname}", "{txt}");  /* {e} */')
-        if getattr(self, "veneer", False):
-            # the word after the veneer code is the target
-            self.emit("/* veneer target read from the literal */")
         nxt = self.f.get("next")
         if nxt:
             self.emit(f"{nxt}();  /* falls through into the next function */")

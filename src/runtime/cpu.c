@@ -119,5 +119,7 @@ void rt_fatal(const char *fmt, ...) {
     va_end(ap);
     fprintf(stderr, "  pc~? r0=%08X r1=%08X r2=%08X r3=%08X sp=%08X lr=%08X\n", R(0), R(1), R(2), R(3), R(13), R(14));
     fflush(stderr);
+    void rt_stack_here(void);
+    rt_stack_here();
     exit(3);
 }
