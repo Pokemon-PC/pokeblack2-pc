@@ -49,3 +49,22 @@ langues (textes plus longs en français).
   Matis), descente avec A répété, combat (~11 000 à 15 000), puis A jusqu'au
   Centre Pokémon (~20 000). Ne dépend pas de la longueur des textes : vérifié
   sur Noire 2 française (`pokenoire2.exe`).
+
+## Pilotage pas à pas et sauvegardes de reprise
+
+Pour aller plus loin que ces scénarios, le jeu se pilote pas à pas
+(`PB2_CTRL=<dossier>`, `tools/ctrl.py`, voir `README.md`) :
+
+```
+PB2_RTC=2026-11-25-16:20 PB2_HEADLESS=1 PB2_SAVE=<dossier>/game.sav PB2_CTRL=<dossier>   PB2_KEYS="3700:S,3706:,3900:A,3906:,4100:A,4106:,4200:" build/pc/pokeblack2.exe &
+python tools/ctrl.py <dossier> "k - 4400" "s depart"
+python tools/ctrl.py <dossier> $(sh tools/walk.sh U 10 A) "s apres"
+```
+
+`walk.sh DIR N A` fait N pas en tapant A (lit les textes, se bat : A choisit
+ATTAQUE puis la première attaque). À chaque étape franchie, une sauvegarde en
+jeu (X, SAUVEGARDER, OUI ; au toucher ou aux touches) sert de point de
+reprise : CONTINUE la recharge en quelques secondes. Ces sauvegardes restent
+hors du dépôt. Étapes atteintes ainsi (Noire 2 anglaise) : Route 19 avant les
+hautes herbes, Ruelles, Route 20.
+

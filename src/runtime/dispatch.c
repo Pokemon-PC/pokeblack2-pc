@@ -50,8 +50,28 @@ static int boot_snippet(u32 addr) {
     return 0;
 }
 
+/* static initializers of an overlay (called by the overlay loader,
+ * FUN_0207113C, "blx r0" at 0x020711E0): the only ones in the game are the 5
+ * of overlay 165's anti-piracy library (dsprot_instant, linked as C, not in
+ * the disassembly), whose exports are answered by dsprot_call(): nothing to
+ * initialize */
+static int skip_sinit(u32 addr) {
+    static u32 runner;
+    if (!runner) {
+        runner = pb2_addr(0x020711E3);
+    }
+    if (LR != runner) {
+        return 0;
+    }
+    rt_log("overlay static initializer 0x%08X skipped (anti-piracy library)", addr);
+    return 1;
+}
+
 void call_addr(u32 addr) {
     if ((addr >> 16) == 0x01FF && boot_snippet(addr)) {
+        return;
+    }
+    if (skip_sinit(addr)) {       /* before the lookup: another overlay may have a function there */
         return;
     }
     /* binary search of the first entry with this address */

@@ -3,6 +3,7 @@
 #include "rt.h"
 
 #include <stdio.h>
+#include <stdlib.h>
 #include "rc_decls.h"
 
 /* PXI_IsCallbackReady(tag, proc): the ARM9 spins until the other CPU has
@@ -58,5 +59,18 @@ void hle_OS_Terminate(void) {
     heapwatch_dump();
     for (;;) {
         time_wait_irq();
+    }
+}
+
+/* the game starts an overlay (FUN_0207113C, called once it is in memory):
+ * PB2_LOGOVERLAYS=1 logs it (which code is where, for "call to ...: no
+ * loaded overlay" or a wrong function picked by call_addr) */
+void hook_overlay_start(void) {
+    static int on = -1;
+    if (on < 0) {
+        on = getenv("PB2_LOGOVERLAYS") != NULL;
+    }
+    if (on) {
+        rt_log("overlay %u started (%08X-%08X)", rd32(R(0)), rd32(R(0) + 4), rd32(R(0) + 4) + rd32(R(0) + 8));
     }
 }

@@ -24,12 +24,23 @@ static void sync_update(void) {
     REG16(0x04000180) = (u16)((s & ~0xFu) | (sA7Status & 0xF));
 }
 
+static void fw_build(void);
+static const u8 *sFwUser(void);
+
 void arm7_init(void) {
     sync_update();
     /* OSSystemWork.pxiHandleChecker[ARM7] (0x027FFF8C): one bit per PXI tag
      * whose ARM7 service is ready; the ARM9 waits for them
      * (PXI_IsCallbackReady, FUN_0207CA48). Every service answers here. */
     *(volatile u32 *)(uintptr_t)0x027FFF8C = 0xFFFFFFFFu;
+    /* the DS firmware copies the user settings (NVRAM 0x3FE00) to main RAM
+     * 0x027FFC80 before starting the game: owner name, birthday, language,
+     * and the touch screen calibration that TP_GetCalibratedPoint uses
+     * (without it every touch is lost) */
+    fw_build();
+    for (u32 i = 0; i < 0x70; i++) {
+        *(volatile u8 *)(uintptr_t)(0x027FFC80 + i) = sFwUser()[i];
+    }
 }
 
 void arm7_ipc_sync_write(u32 v) {
@@ -274,6 +285,9 @@ static u16 crc16(u16 crc, const u8 *p, u32 n) {
     }
     return crc;
 }
+static const u8 *sFwUser(void) {
+    return sFw + 0x3FE00;
+}
 static void fw_build(void) {
     if (sFw) {
         return;
@@ -398,10 +412,21 @@ static void rtc_command(u32 data) {
 u32 gTouchRaw;                                  /* set by the input layer */
 static void tp_command(u32 data) {
     u32 cmd = (data >> 8) & 0x7F;
+    static u32 seen;
+    if (!(seen & (1u << (cmd & 31)))) {
+        seen |= 1u << (cmd & 31);
+        rt_log("touch panel command %u (data %07X)", cmd, data);
+    }
     if (!(data & 0x01000000)) {
         return;
     }
     volatile u16 *t = (volatile u16 *)(uintptr_t)0x027FFFAA;
+    static u32 n, last;
+    n++;
+    if (getenv("PB2_LOGTOUCH") && (gTouchRaw != last || n % 600 == 0)) {
+        rt_log("touch sample %u: raw %08X", n, gTouchRaw);
+        last = gTouchRaw;
+    }
     t[0] = (u16)gTouchRaw;
     t[1] = (u16)(gTouchRaw >> 16);
     send_reply(TAG_TP, 0x01000000 | (cmd << 8));

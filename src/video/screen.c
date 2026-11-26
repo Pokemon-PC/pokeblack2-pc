@@ -150,6 +150,7 @@ static u32 touch_raw(int x, int y) {
  *   t X Y N         touch the bottom screen at X,Y for N frames
  *   s NAME          screenshot to dir/NAME.bmp
  *   r               log the 2D registers of both screens and their sprites
+ *   d ADDR LEN NAME memory (hex address, length) to dir/NAME.bin
  *   q               quit
  * The file is deleted once read. */
 typedef struct { char op; u16 keys, hold; u8 xy; int x, y; u32 n, period; char name[64]; } CtrlCmd;
@@ -185,6 +186,10 @@ static void ctrl_load(void) {
             }
         } else if (c.op == 's') {
             sscanf(line + 1, "%63s", c.name);
+        } else if (c.op == 'd') {
+            if (sscanf(line + 1, "%x %u %63s", (unsigned *)&c.x, &c.n, c.name) < 3) {
+                continue;
+            }
         } else if (c.op != 'q' && c.op != 'r') {
             continue;
         }
@@ -236,8 +241,8 @@ static void ctrl_keys(void) {
                 u32 oam = e ? 0x07000400 : 0x07000000, shown = 0;
                 for (int i = 0; i < 128; i++) {
                     u16 a0 = (u16)rd16(oam + i * 8), a1 = (u16)rd16(oam + i * 8 + 2), a2 = (u16)rd16(oam + i * 8 + 4);
-                    if ((a0 & 0x0300) == 0x0200) {
-                        continue;                              /* hidden */
+                    if ((a0 & 0x0300) == 0x0200 || ((a0 & 0xFF) >= 192 && (a0 & 0xFF) < 0xC0 + 0x20)) {
+                        continue;                              /* hidden or parked below the screen */
                     }
                     if (shown++ < 24) {
                         rt_log("      obj %3d: %04X %04X %04X", i, a0, a1, a2);
@@ -246,6 +251,19 @@ static void ctrl_keys(void) {
                 rt_log("      %u sprites shown", shown);
             }
             rt_log("VRAMCNT %08X %08X %04X", rd32(0x04000240), rd32(0x04000244), rd16(0x04000248));
+            sCtrlHead++;
+            continue;
+        }
+        if (c->op == 'd') {
+            char path[512];
+            snprintf(path, sizeof path, "%s/%s.bin", sCtrlDir, c->name);
+            FILE *f = fopen(path, "wb");
+            for (u32 i = 0; f && i < c->n; i++) {
+                fputc((int)rd8((u32)c->x + i), f);
+            }
+            if (f) {
+                fclose(f);
+            }
             sCtrlHead++;
             continue;
         }

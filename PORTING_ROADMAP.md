@@ -267,16 +267,51 @@ Route 19 (Potion ; la sortie nord est une porte étroite, 3e colonne depuis
 la gauche), Route 19, leçon de capture de Bianca, premier combat sauvage
 (Ratentif).
 
-**Où j'en suis** : bug d'affichage en combat : le menu des commandes de
-l'écran du bas (ATTAQUE / SAC / POKÉMON / FUITE) ne s'affiche pas (seul le
-fond Poké Ball est visible), alors que les touches agissent (A choisit
-Charge) et que le menu des attaques s'affiche. Même chose dans le combat
-contre Matis. Prochaine étape : relever les registres 2D et les sprites de
-l'écran du bas à ce moment-là (commande `r` de `PB2_CTRL`) pour trouver la
-fonction du moteur 2D qui manque, puis continuer : Ruelles (Floccesy), Route
-20, Bois aux Aubes, Ville Virbank et la première arène ; recompiler et
-revérifier Blanche 2 et Noire 2 française avec la correction anti-piratage ;
-code propre aux versions françaises ; version Linux ; paquets.
+**Trois autres corrections (2026-11-26, après-midi)** :
+
+- *Initialisations statiques de l'overlay 165* (liste d'équipe, ouverte aussi
+  par le Sac et la sauvegarde) : la bibliothèque anti-piratage
+  `dsprot_instant` y est liée en C (absente du désassemblage) et ses 5
+  initialiseurs, appelés par le chargeur d'overlays (`FUN_0207113C`, `blx r0`
+  à `0x020711E0`), n'avaient pas de traduction (« call to 0x021A33D4: no
+  function there »). Ce sont les seuls initialiseurs statiques du jeu ;
+  `dispatch.c` (`skip_sinit`) les ignore, ses fonctions étant déjà
+  répondues par `dsprot_call()`.
+- *Appels vers la fonction d'une autre overlay* (`bl OV139_FUN_02199AA0`
+  depuis l'overlay 140, écran des Options) : le traducteur écrivait
+  `call_addr(0x02199AA0)`, sans le bit Thumb, et l'aiguillage prenait le
+  seul code ARM à cette adresse, celui de l'overlay 257 (plantage « call to
+  0x91051C04 »). Un nom qui n'existe que dans un fichier désigne cette
+  fonction : appel direct (`recomp.py`, `unique`). Il ne reste aucun
+  `call_addr` à adresse constante dans le code produit.
+- *Écran tactile* : le firmware de la DS recopie les réglages de
+  l'utilisateur (NVRAM `0x3FE00`) en mémoire principale `0x027FFC80` avant de
+  lancer le jeu ; l'étalonnage tactile qu'utilise `TP_GetCalibratedPoint`
+  s'y trouve. Sans cette copie (`arm7_init`), tout toucher était perdu.
+  Vérifié : toucher l'icône POKÉDEX du menu l'ouvre, sauvegarde faite au
+  toucher (SAUVEGARDER, OUI).
+
+Outils ajoutés : `PB2_LOGOVERLAYS=1` (chaque overlay démarrée, crochet
+`hook_overlay_start` que `recomp.py` insère à l'entrée de `FUN_0207113C`,
+table `HOOKS`), `PB2_LOGTOUCH=1` (échantillons tactiles envoyés), commandes
+`r` (registres 2D) et `d ADRESSE LONGUEUR NOM` (mémoire) de `PB2_CTRL`.
+
+Le menu de combat (ATTAQUE / SAC / FUITE / POKÉMON) s'affiche bien : le jeu
+ne le fait apparaître qu'une fois toutes les touches relâchées (mes pas de
+marche gardaient la flèche enfoncée) ; `tools/walk.sh` relâche désormais
+entre deux pas.
+
+Vérifié (Noire 2 anglaise, sauvegardes en jeu Route 19, Ruelles, Route 20) :
+combats sauvages sur la Route 19 (Chacripan, Ratentif, victoire, retour à la
+carte), scènes de Goyah (Alder) avant et dans Ruelles, Centre Pokémon de
+Ruelles, Pokédex, équipe et résumé (2 pages), Sac, carte de dresseur (recto,
+badges), Options, Route 20.
+
+**Où j'en suis** : sur la Route 20 (sauvegarde en jeu faite là, hors dépôt).
+Prochaines étapes : Ranch de Ruelles, Ville Virbank et la première arène ;
+revérifier Blanche 2 et Noire 2 française avec ces corrections
+(retraduites et recompilées) ; code propre aux versions françaises ;
+version Linux ; paquets.
 
 ## Ce qu'il faut pour R3
 

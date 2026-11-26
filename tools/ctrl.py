@@ -35,6 +35,19 @@ def bmp_to_png(src, dst):
     open(dst, "wb").write(png)
 
 
+def alive(pid):
+    """Whether the Windows process is still running (exit code STILL_ACTIVE)."""
+    import ctypes
+    k = ctypes.windll.kernel32
+    h = k.OpenProcess(0x1000, False, pid)          # PROCESS_QUERY_LIMITED_INFORMATION
+    if not h:
+        return False
+    code = ctypes.c_ulong()
+    ok = k.GetExitCodeProcess(h, ctypes.byref(code))
+    k.CloseHandle(h)
+    return bool(ok) and code.value == 259
+
+
 def main():
     d, cmds = sys.argv[1], sys.argv[2:]
     status = os.path.join(d, "status.txt")
@@ -52,10 +65,7 @@ def main():
     while not os.path.exists(status):
         time.sleep(0.1)
         if os.path.exists(pid) and time.time() - t0 > 2:
-            import subprocess
-            p = open(pid).read().strip()
-            out = subprocess.run(["tasklist", "/FI", f"PID eq {p}"], capture_output=True, text=True).stdout
-            if p not in out:
+            if not alive(int(open(pid).read().strip() or 0)):
                 print("game process is gone")
                 sys.exit(1)
             t0 = time.time()
