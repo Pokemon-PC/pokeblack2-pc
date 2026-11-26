@@ -43,7 +43,7 @@ with open(os.path.join(out, "LISEZMOI.txt"), "w", encoding="utf-8", newline="\r\
     f.write(lisez)
 with open(os.path.join(out, "config.ini"), "w", newline="\r\n") as f:
     f.write(f"; {game_en} (PC) - settings\n\n"
-            f"; Folder holding your {game_en} ROM (English, USA/Europe). Empty: the\n"
+            f"; Folder holding your {game_en} ROM ({'French' if french else 'English, USA/Europe'}). Empty: the\n"
             "; ROM is looked for next to this exe. The file is recognised by its header,\n"
             "; whatever its name. Example: rom_dir = D:\\Games\\roms\n"
             "rom_dir =\n")

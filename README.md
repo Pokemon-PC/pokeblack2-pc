@@ -48,7 +48,10 @@ cmake --build build/pc_w2          # pokewhite2.exe (ROM Blanche 2 anglaise, IRD
 Version française : même chose avec la ROM française à la place de la ROM
 Blanche 2 anglaise dans `w2addr.py` (carte `build/w2fr_addr.json`, code dans
 `build/rc_w2fr`), puis `-DPB2_VERSION=white2 -DPB2_LANG=fr` →
-`pokeblanche2.exe` (ROM `IRDF`). Chaque version et chaque langue a son exe,
+`pokeblanche2.exe` (ROM `IRDF`). Noire 2 française : carte
+`build/b2fr_addr.json` (ROM Noire 2 anglaise puis ROM `IREF`), code dans
+`build/rc_b2fr`, `recomp.py` sans `--version`, puis `-DPB2_LANG=fr` →
+`pokenoire2.exe`. Chaque version et chaque langue a son exe,
 sa sauvegarde et son journal.
 
 ## Compiler

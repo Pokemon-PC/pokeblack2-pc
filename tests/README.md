@@ -44,3 +44,8 @@ langues (textes plus longs en français).
   `pokeblanche2.exe`, avec cette sauvegarde) : CONTINUE, descente qui fait
   venir Matis, fin de la scène avec B, Matis, puis le combat (~10 600 à
   15 500) : « VS. », Moustillon, Charge, Mimi-Queue.
+- `battle_from_lookout_mash.keys` (toutes versions et langues, avec la même
+  sauvegarde) : CONTINUE, A répété jusqu'à ~8 600 (scènes de Bianca et de
+  Matis), descente avec A répété, combat (~11 000 à 15 000), puis A jusqu'au
+  Centre Pokémon (~20 000). Ne dépend pas de la longueur des textes : vérifié
+  sur Noire 2 française (`pokenoire2.exe`).

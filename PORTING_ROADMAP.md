@@ -320,7 +320,15 @@ fonctions ont un code propre à la version française (elles exécutent la
 logique anglaise à leur adresse française). `-DPB2_LANG=fr` →
 `pokeblanche2.exe` (sauvegarde `pokeblanche2.sav`). Vérifié : titre
 « APPUYEZ SUR START », présentation et nom en français, ville, combat contre
-Matis en français. Noire 2 française : il faut la ROM `IREF` (absente).
+Matis en français.
+
+**Noire 2 française** (`IREF`) : même méthode, carte mesurée entre Noire 2
+anglaise et Noire 2 française (`build/b2fr_addr.json`, code dans
+`build/rc_b2fr`) ; 18 778 constantes sur 18 878 tombent juste.
+`-DPB2_LANG=fr` → `pokenoire2.exe` (sauvegarde `pokenoire2.sav`). Vérifié :
+titre « POKÉMON VERSION NOIRE 2 / APPUYEZ SUR START », sauvegarde du belvédère
+rechargée, scène de Bianca et de Matis en français, combat contre Matis
+(Moustillon K.O.), Centre Pokémon (`tests/battle_from_lookout_mash.keys`).
 
 Paquets (2026-11-26) : `build/release` (Noire 2), `build/release_w2`
 (Blanche 2), `build/release_w2fr` (Blanche 2 française), chacun avec
