@@ -228,6 +228,56 @@ menu du sac, lancer de Poké Ball, animation de capture, « Gotcha! Purrloin
 was caught! » ; le joueur est ensuite libre sur la Route 19. Aucune
 correction n'a été nécessaire pour ce tronçon.
 
+## Après la Route 19 : anti-piratage et pilotage pas à pas (2026-11-26, en cours)
+
+**Pilotage pas à pas** (`PB2_CTRL=<dossier>`, `src/video/screen.c`) : le jeu
+attend ses commandes dans `<dossier>/cmd.txt` (`k TOUCHES N` tenir, `m
+TOUCHES N P [TENUES]` taper, `t X Y N` toucher, `s NOM` capture, `r` registres
+2D et sprites des deux écrans, `q` quitter) et écrit `status.txt` quand il a
+fini. `tools/ctrl.py <dossier> "commande" ...` les envoie, attend, convertit
+les captures en PNG et ajoute les touches à `history.txt` (rejouable) ;
+`tools/walk.sh DIR N [TOUCHE]` produit des pas ; `tools/sheet.py` met des
+captures côte à côte ; `tools/funcat.py ADRESSE...` nomme la fonction du
+binaire principal qui contient une adresse.
+
+**Bug corrigé : la punition anti-piratage remplissait le tas n° 4.** En
+entrant dans la porte de la Route 19, le jeu s'arrêtait (`OS_Terminate` depuis
+`FUN_0203A1FC` : allocation impossible). `PB2_HEAPWATCH=n`
+(`src/runtime/heapwatch.c`) affiche l'état des tas du jeu ; au moment de
+l'échec, le tas n° 4 (64 Kio) contenait 14 blocs de 4 Kio venant de
+`event_mapchange.c` (overlay 35). Cause : à chaque changement de carte, le jeu
+appelle `DSProt_DetectFlashcartB` et `DSProt_DetectEmulatorB` (bibliothèque
+anti-piratage de Nintendo, `lib/dsprot` du désassemblage) au travers d'un
+emballage qui vérifie d'abord l'empreinte du code de la fonction de
+détection (`0x9F75A8D6`). Ce code étant encore encodé ici, l'empreinte ne
+correspondait pas et le jeu appelait directement son rappel « échec », qui
+alloue 4 Kio et les perd exprès. Correction (`recomp.py`, `cpu.c`) : dans les
+fonctions qui citent la bibliothèque, la comparaison d'une empreinte chargée
+d'un pool réussit (7 endroits : binaire principal, overlays 12, 35, 165) ;
+`dsprot_call()` reçoit les adresses des mots du pool qui pointent vers
+`DSProt_CallbackTable` et `DSProt_CallbackIndex` et appelle le rappel
+« réussite » comme une vraie cartouche ; `DSProt_DetectAll(cb, a, b)` rend
+`cb(a, b)`. Le tas reste stable sur tout le parcours. Les quatre versions
+sont retraduites avec cette correction (`build/rc`, `rc_w2`, `rc_w2fr`,
+`rc_b2fr`) ; seul `build/pc` (Noire 2 anglaise) est recompilé et vérifié.
+
+Vérifié ensuite (Noire 2 anglaise, sauvegarde du belvédère, histoire rejouée
+pas à pas) : combat contre Matis, Centre Pokémon, mère (Carte), porte de la
+Route 19 (Potion ; la sortie nord est une porte étroite, 3e colonne depuis
+la gauche), Route 19, leçon de capture de Bianca, premier combat sauvage
+(Ratentif).
+
+**Où j'en suis** : bug d'affichage en combat : le menu des commandes de
+l'écran du bas (ATTAQUE / SAC / POKÉMON / FUITE) ne s'affiche pas (seul le
+fond Poké Ball est visible), alors que les touches agissent (A choisit
+Charge) et que le menu des attaques s'affiche. Même chose dans le combat
+contre Matis. Prochaine étape : relever les registres 2D et les sprites de
+l'écran du bas à ce moment-là (commande `r` de `PB2_CTRL`) pour trouver la
+fonction du moteur 2D qui manque, puis continuer : Ruelles (Floccesy), Route
+20, Bois aux Aubes, Ville Virbank et la première arène ; recompiler et
+revérifier Blanche 2 et Noire 2 française avec la correction anti-piratage ;
+code propre aux versions françaises ; version Linux ; paquets.
+
 ## Ce qu'il faut pour R3
 
 - La **ROM anglaise** visée par le désassemblage : Noire 2

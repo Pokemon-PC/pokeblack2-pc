@@ -52,6 +52,7 @@ add_executable(${PB2_EXE}
     src/runtime/main.c src/runtime/config.c src/runtime/mem.c src/runtime/rom.c src/runtime/cpu.c
     src/runtime/io.c src/runtime/bios.c src/runtime/card.c src/runtime/arm7.c
     src/runtime/dispatch.c src/runtime/thread.c src/runtime/watchdog.c src/runtime/hle.c
+    src/runtime/heapwatch.c
     src/video/screen.c src/video/ppu.c src/video/vram.c src/video/gpu3d.c src/audio/snd.c)
 target_include_directories(${PB2_EXE} PRIVATE src/runtime ${PB2_RC_DIR})
 target_compile_options(${PB2_EXE} PRIVATE -O2 ${PB2_DEBUG_FLAGS} -Wall -Wno-unused-function -fno-strict-aliasing -fwrapv)

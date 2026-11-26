@@ -114,7 +114,7 @@ void cp15_write(u32 crn, u32 crm, u32 op2, u32 v);
 u32 cpsr_read(void);
 void cpsr_write(u32 v, u32 mask);
 void unimpl(const char *where, const char *text);
-void dsprot_call(const char *name);
+void dsprot_call(const char *name, u32 tablePool, u32 indexPool);
 #define UNIMPL(w, t) unimpl(w, t)
 
 #endif

@@ -12,6 +12,7 @@
  *      PB2_SHOTS=dir    write a BMP every 60 frames into dir (dir/fNNNNN.bmp)
  *      PB2_SHOTS_EVERY=n   period of PB2_SHOTS in frames (default 60)
  *      PB2_KEYS=f:keys,...  scripted input: from frame f hold keys
+ *      PB2_CTRL=dir     step-by-step control through dir/cmd.txt (see ctrl_keys)
  *                       (A B L R S=start E=select U D <  > X Y), e.g. 600:S,620:
  * Keys: X = A, Z = B, S = X, A = Y, Q = L, W = R, Return = Start,
  *       Right Shift / Backspace = Select, arrows; mouse on the bottom screen = touch.
@@ -25,6 +26,7 @@
 #include <SDL.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 
 static uint32_t sFb[2][PC_SCREEN_W * PC_SCREEN_H];
 static SDL_Window *sWin;
@@ -112,6 +114,168 @@ static void write_bmp(const char *path) {
     fclose(f);
 }
 
+/* key letters of PB2_KEYS and PB2_CTRL: KEYINPUT (active low) and X/Y */
+static void parse_keys(const char *p, const char *end, u16 *keys, u8 *xy) {
+    for (; *p && p != end && *p != ','; p++) {
+        switch (*p) {
+        case 'A': *keys &= ~0x001; break;
+        case 'B': *keys &= ~0x002; break;
+        case 'E': *keys &= ~0x004; break;
+        case 'S': *keys &= ~0x008; break;
+        case '>': *keys &= ~0x010; break;
+        case '<': *keys &= ~0x020; break;
+        case 'U': *keys &= ~0x040; break;
+        case 'D': *keys &= ~0x080; break;
+        case 'R': *keys &= ~0x100; break;
+        case 'L': *keys &= ~0x200; break;
+        case 'X': *xy &= ~0x01; break;
+        case 'Y': *xy &= ~0x02; break;
+        }
+    }
+}
+
+static u32 touch_raw(int x, int y) {
+    /* raw ADC values matching the firmware calibration (arm7.c) */
+    int ax = 0x200 + (x - 32) * 16, ay = 0x200 + (y - 32) * 24;
+    u32 rx = (u32)(ax < 0 ? 0 : ax > 0xFFF ? 0xFFF : ax), ry = (u32)(ay < 0 ? 0 : ay > 0xFFF ? 0xFFF : ay);
+    return rx | ry << 12 | 1u << 24;
+}
+
+/* PB2_CTRL=dir: the game is driven step by step (headless tests that go far
+ * without replaying from frame 0). When it has nothing left to do it writes
+ * dir/status.txt ("frame N") and waits for dir/cmd.txt, one command per line:
+ *   k KEYS N        hold KEYS (PB2_KEYS letters, '-' = none) for N frames
+ *   m KEYS N P [HOLD]  tap KEYS (6 frames) every P frames, N frames in all,
+ *                   holding HOLD the whole time (walk while pressing A)
+ *   t X Y N         touch the bottom screen at X,Y for N frames
+ *   s NAME          screenshot to dir/NAME.bmp
+ *   r               log the 2D registers of both screens and their sprites
+ *   q               quit
+ * The file is deleted once read. */
+typedef struct { char op; u16 keys, hold; u8 xy; int x, y; u32 n, period; char name[64]; } CtrlCmd;
+static const char *sCtrlDir;
+static CtrlCmd sCtrl[4096];
+static u32 sCtrlHead, sCtrlCount, sCtrlDone;
+
+static void ctrl_load(void) {
+    char path[512], line[256];
+    snprintf(path, sizeof path, "%s/status.txt", sCtrlDir);
+    FILE *f = fopen(path, "w");
+    if (f) {
+        fprintf(f, "frame %u\n", sFrames);
+        fclose(f);
+    }
+    snprintf(path, sizeof path, "%s/cmd.txt", sCtrlDir);
+    while (!(f = fopen(path, "r"))) {
+        SDL_Delay(20);
+    }
+    sCtrlHead = sCtrlCount = 0;
+    while (fgets(line, sizeof line, f) && sCtrlCount < sizeof sCtrl / sizeof sCtrl[0]) {
+        CtrlCmd c = { .op = line[0], .keys = 0x03FF, .hold = 0x03FF, .xy = 0x7F };
+        char arg[64] = "", hold[64] = "";
+        if (c.op == 'k' || c.op == 'm') {
+            if (sscanf(line + 1, "%63s %u %u %63s", arg, &c.n, &c.period, hold) < 2) {
+                continue;
+            }
+            parse_keys(arg, NULL, &c.keys, &c.xy);
+            parse_keys(hold, NULL, &c.hold, &c.xy);
+        } else if (c.op == 't') {
+            if (sscanf(line + 1, "%d %d %u", &c.x, &c.y, &c.n) < 3) {
+                continue;
+            }
+        } else if (c.op == 's') {
+            sscanf(line + 1, "%63s", c.name);
+        } else if (c.op != 'q' && c.op != 'r') {
+            continue;
+        }
+        sCtrl[sCtrlCount++] = c;
+    }
+    fclose(f);
+    remove(path);
+}
+
+static void ctrl_keys(void) {
+    static int init;
+    if (!init) {
+        init = 1;
+        sCtrlDir = getenv("PB2_CTRL");
+        if (sCtrlDir) {
+            char path[512];
+            snprintf(path, sizeof path, "%s/pid.txt", sCtrlDir);
+            FILE *f = fopen(path, "w");
+            if (f) {
+                fprintf(f, "%d\n", (int)getpid());
+                fclose(f);
+            }
+        }
+    }
+    if (!sCtrlDir) {
+        return;
+    }
+    for (;;) {
+        if (sCtrlHead >= sCtrlCount) {
+            ctrl_load();
+            continue;
+        }
+        CtrlCmd *c = &sCtrl[sCtrlHead];
+        if (c->op == 'q') {
+            rt_log("PB2_CTRL: quit at frame %u", sFrames);
+            exit(0);
+        }
+        if (c->op == 'r') {
+            for (int e = 0; e < 2; e++) {
+                u32 b = e ? 0x04001000 : 0x04000000;
+                rt_log("%s: DISPCNT %08X BGCNT %04X %04X %04X %04X BLDCNT %04X ALPHA %04X Y %02X "
+                       "WIN0H %04X WIN0V %04X WININ %04X WINOUT %04X MASTER %04X",
+                       e ? "sub " : "main", rd32(b), rd16(b + 8), rd16(b + 0xA), rd16(b + 0xC), rd16(b + 0xE),
+                       rd16(b + 0x50), rd16(b + 0x52), rd16(b + 0x54), rd16(b + 0x40), rd16(b + 0x44),
+                       rd16(b + 0x48), rd16(b + 0x4A), rd16(b + 0x6C));
+                rt_log("      BG ofs %04X,%04X %04X,%04X %04X,%04X %04X,%04X",
+                       rd16(b + 0x10), rd16(b + 0x12), rd16(b + 0x14), rd16(b + 0x16),
+                       rd16(b + 0x18), rd16(b + 0x1A), rd16(b + 0x1C), rd16(b + 0x1E));
+                u32 oam = e ? 0x07000400 : 0x07000000, shown = 0;
+                for (int i = 0; i < 128; i++) {
+                    u16 a0 = (u16)rd16(oam + i * 8), a1 = (u16)rd16(oam + i * 8 + 2), a2 = (u16)rd16(oam + i * 8 + 4);
+                    if ((a0 & 0x0300) == 0x0200) {
+                        continue;                              /* hidden */
+                    }
+                    if (shown++ < 24) {
+                        rt_log("      obj %3d: %04X %04X %04X", i, a0, a1, a2);
+                    }
+                }
+                rt_log("      %u sprites shown", shown);
+            }
+            rt_log("VRAMCNT %08X %08X %04X", rd32(0x04000240), rd32(0x04000244), rd16(0x04000248));
+            sCtrlHead++;
+            continue;
+        }
+        if (c->op == 's') {
+            char path[512];
+            snprintf(path, sizeof path, "%s/%s.bmp", sCtrlDir, c->name);
+            write_bmp(path);
+            sCtrlHead++;
+            continue;
+        }
+        if (sCtrlDone >= c->n) {
+            sCtrlDone = 0;
+            sCtrlHead++;
+            continue;
+        }
+        if (c->op == 'm') {
+            sKeys &= c->hold;
+        }
+        if (c->op == 'k' || (c->op == 'm' && sCtrlDone % (c->period ? c->period : 30) < 6)) {
+            sKeys &= c->keys;
+            sXY &= c->xy;
+        } else if (c->op == 't') {
+            gTouchRaw = touch_raw(c->x, c->y);
+            sXY &= ~0x40;
+        }
+        sCtrlDone++;
+        return;
+    }
+}
+
 /* PB2_KEYS script: "frame:keys,frame:keys" */
 static void scripted_keys(void) {
     static const char *script;
@@ -132,21 +296,9 @@ static void scripted_keys(void) {
         }
         u16 k = 0x03FF;
         u8 e = 0x7F;
-        for (; *p && *p != ','; p++) {
-            switch (*p) {
-            case 'A': k &= ~0x001; break;
-            case 'B': k &= ~0x002; break;
-            case 'E': k &= ~0x004; break;
-            case 'S': k &= ~0x008; break;
-            case '>': k &= ~0x010; break;
-            case '<': k &= ~0x020; break;
-            case 'U': k &= ~0x040; break;
-            case 'D': k &= ~0x080; break;
-            case 'R': k &= ~0x100; break;
-            case 'L': k &= ~0x200; break;
-            case 'X': e &= ~0x01; break;
-            case 'Y': e &= ~0x02; break;
-            }
+        parse_keys(p, NULL, &k, &e);
+        while (*p && *p != ',') {
+            p++;
         }
         if (*p == ',') {
             p++;
@@ -197,15 +349,13 @@ static void read_input(void) {
             SDL_RenderWindowToLogical(sRen, mx, my, &lx, &ly);
             int x = (int)lx, y = (int)ly - PC_SCREEN_H;
             if (x >= 0 && x < PC_SCREEN_W && y >= 0 && y < PC_SCREEN_H) {
-                /* raw ADC values matching the firmware calibration (arm7.c) */
-                int ax = 0x200 + (x - 32) * 16, ay = 0x200 + (y - 32) * 24;
-                u32 rx = (u32)(ax < 0 ? 0 : ax > 0xFFF ? 0xFFF : ax), ry = (u32)(ay < 0 ? 0 : ay > 0xFFF ? 0xFFF : ay);
-                gTouchRaw = rx | ry << 12 | 1u << 24;
+                gTouchRaw = touch_raw(x, y);
                 sXY &= ~0x40;
             }
         }
     }
     scripted_keys();
+    ctrl_keys();
     *(volatile u16 *)(uintptr_t)0x04000130 = sKeys;
     /* HW_BUTTON_XY_BUF as the ARM7 writes it: X bit 10, Y bit 11, debug bit 13,
      * lid closed bit 15 (active low like KEYINPUT, ORed with it by PAD_Read) */
@@ -233,7 +383,9 @@ static void pace(void) {
 }
 
 void video_frame(void) {
+    void heapwatch_frame(u32 frame);
     sFrames++;
+    heapwatch_frame(sFrames);
     /* PB2_PERF=1: time spent drawing vs the whole frame, every 600 frames */
     static int perf = -1;
     static u64 tRender, tStart, tPrev;

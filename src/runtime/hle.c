@@ -52,7 +52,10 @@ void hle_FUN_0203CB94(void) {
 void hle_OS_Terminate(void) {
     void thread_dump(void);
     rt_log("OS_Terminate (lr 0x%08X, cpsr %08X)", LR, cpsr_read());
+    rt_log("  r4-r7 %08X %08X %08X %08X (heap alloc failure: r6 heap, r5 size)", R(4), R(5), R(6), R(7));
     thread_dump();
+    void heapwatch_dump(void);
+    heapwatch_dump();
     for (;;) {
         time_wait_irq();
     }

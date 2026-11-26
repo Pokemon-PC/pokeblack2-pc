@@ -9,6 +9,7 @@
 #include "rt.h"
 #include "dispatch.h"
 
+#include <stdlib.h>
 #include <string.h>
 
 static int overlay_loaded_at(int ov, u32 addr) {
@@ -86,8 +87,19 @@ void call_addr(u32 addr) {
         first->fn();
         return;
     }
+    /* PB2_TRACECALL=hex: log the overlay chosen for calls to that address */
+    static int traceInit;
+    static u32 traceAddr;
+    if (!traceInit) {
+        traceInit = 1;
+        const char *t = getenv("PB2_TRACECALL");
+        traceAddr = t ? (u32)strtoul(t, NULL, 16) : 0;
+    }
     for (unsigned i = lo; i < gDispatchCount && gDispatch[i].addr == addr; i++) {
         if (gDispatch[i].overlay < 0 || overlay_loaded_at(gDispatch[i].overlay, addr)) {
+            if (traceAddr && (addr & ~1u) == (traceAddr & ~1u)) {
+                rt_log("call 0x%08X -> overlay %d (lr 0x%08X)", addr, gDispatch[i].overlay, LR);
+            }
             gDispatch[i].fn();
             return;
         }

@@ -347,6 +347,32 @@ class FuncGen:
         self.out = []
         self.unimpl = 0
         self.popped = set()
+        # DSProt (anti-piracy, lib/dsprot): the game's inline wrapper hashes
+        # the code of a detection function before calling it and calls the
+        # "fail" callback on a mismatch. The detection code is still encoded
+        # here (DSProt_DecodeFunctions is answered by the runtime), so the
+        # hash compare is made to succeed, and the pool words holding the
+        # callback table and index are passed to dsprot_call, which runs the
+        # "pass" callback like a genuine cartridge.
+        self.dsprot = {}          # "DSProt_CallbackTable"/"Index" -> pool address
+        self.dsprot_func = False
+        self.pool_vals = {}       # pool address -> numeric .word
+        self.icount = 0
+        last = None
+        for it in f["items"]:
+            if it[0] == "label":
+                last = it[2]
+            elif it[0] == "data":
+                m = re.match(r"^\.word\s+(DSProt_\w+)\s*$", it[1].strip())
+                if m and last is not None:
+                    self.dsprot[m.group(1)] = last
+                    self.dsprot_func = True
+                m = re.match(r"^\.word\s+(0x[0-9A-Fa-f]{8})\s*$", it[1].strip())
+                if m and last is not None:
+                    self.pool_vals[last] = int(m.group(1), 16)
+                if last is not None:
+                    last += 4
+        self.lit_reg = {}         # register -> instruction index of its last literal load
 
     # ---- flag liveness (backward over the linear code, conservative)
     def liveness(self, insns):
@@ -465,6 +491,7 @@ class FuncGen:
 
     # ---- per instruction
     def translate(self, ins, need_flags):
+        self.icount += 1
         op, a = ins.op, ins.args
         f = need_flags
         T = ins.thumb
@@ -503,6 +530,11 @@ class FuncGen:
                     self.cond_wrap(ins, [f"LR = 0x{ret:08X}u;", f"{t}; return;"])
                     return
             t = self.resolve(name, self.fileid)
+            if t.startswith("dsprot_call(") and "DSProt_CallbackTable" in self.dsprot and \
+                    "DSProt_CallbackIndex" in self.dsprot:
+                # the pool words that hold the callback table and its index
+                t = t.replace(", 0, 0)", f", 0x{self.dsprot['DSProt_CallbackTable']:08X}u,"
+                                         f" 0x{self.dsprot['DSProt_CallbackIndex']:08X}u)")
             self.cond_wrap(ins, [f"LR = 0x{ret:08X}u;", f"{t};"])
             return
         if op == "blx":
@@ -570,7 +602,10 @@ class FuncGen:
         if op in ("cmp", "cmn", "tst", "teq"):
             x = rv(reg(a[0]), ins)
             y = self.op2(a[1:], ins, op in ("tst", "teq") and f)
-            if op == "cmp":
+            if op == "cmp" and self.dsprot_func and len(a) == 2 and not is_imm(a[1]) and \
+                    any(self.icount - self.lit_reg.get(reg(r), -99) <= 3 for r in a):
+                body.append(f"sub_f({x}, {x});   /* DSProt integrity hash: as on a genuine cartridge */")
+            elif op == "cmp":
                 body.append(f"sub_f({x}, {y});")
             elif op == "cmn":
                 body.append(f"add_f({x}, {y});")
@@ -721,6 +756,9 @@ class FuncGen:
                 la = int(mm.group(1), 16)
             if la is None:
                 raise Untranslatable("literal " + lab)
+            v = self.pool_vals.get(la)
+            if v is not None and v >= 0x01000000 and not 0x01FF0000 <= v < 0x03000000:
+                self.lit_reg[rd] = self.icount       # a hash-like constant (DSProt check)
             body = [f"R({rd}) = rd32(0x{la:08X}u);"] if rd != 15 else self.set_pc(ins, f"rd32(0x{la:08X}u)")
             self.cond_wrap(ins, body)
             return
@@ -1020,7 +1058,7 @@ def main():
         if name in SVC:
             return f"swi_call(0x{SVC[name]:X})"
         if name.startswith("DSProt_"):
-            return f"dsprot_call(\"{name}\")"     # anti-piracy checks: runtime answers "genuine"
+            return f"dsprot_call(\"{name}\", 0, 0)"     # anti-piracy checks: runtime answers "genuine"
         if name in local.get(fileid, {}):
             return local[fileid][name] + "()"
         if name in glob_names:

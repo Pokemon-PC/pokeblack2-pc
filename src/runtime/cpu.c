@@ -87,11 +87,29 @@ void unimpl(const char *where, const char *text) {
     rt_fatal("untranslated instruction in %s: %s", where, text);
 }
 
-void dsprot_call(const char *name) {
-    /* Nintendo's anti-piracy checks: a genuine cartridge, no flash card */
+void dsprot_call(const char *name, u32 tablePool, u32 indexPool) {
+    /* Nintendo's anti-piracy library (lib/dsprot of the disassembly): the
+     * answers of a genuine cartridge. A detection function runs the "pass"
+     * callback registered in DSProt_CallbackTable[DSProt_CallbackIndex]
+     * with its two arguments and returns what it returns (the recompiler
+     * gives the addresses of the caller's pool words that point to the
+     * table and the index); DSProt_DetectAll(cb, a, b) returns cb(a, b);
+     * the others (DSProt_DecodeFunctions...) have nothing to do. */
     static int said;
     if (!said++) {
         rt_log("DSProt check %s: answered 'genuine cartridge'", name);
+    }
+    if (strstr(name, "DetectAll")) {
+        u32 cb = R(0);
+        R(0) = R(1);
+        R(1) = R(2);
+        call_addr(cb);
+        return;
+    }
+    if (strstr(name, "Detect") && tablePool && indexPool) {
+        u32 table = rd32(tablePool), index = rd32(rd32(indexPool)) & 1;
+        call_addr(rd32(table + index * 4));
+        return;
     }
     R(0) = 0;
 }

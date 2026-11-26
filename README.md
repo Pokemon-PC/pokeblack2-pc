@@ -86,5 +86,11 @@ Touches scriptées, captures, horloge fixe : voir `tests/README.md`.
 Variables : `PB2_HEADLESS`, `PB2_SHOT`, `PB2_SHOTS`, `PB2_KEYS`, `PB2_RTC`,
 `PB2_MUTE`, `PB2_AUDIO_DUMP`, `PB2_PERF`, `PB2_BENCH`, `PB2_PROFILE`,
 `PB2_WATCH`, `PB2_FNTRACE`, `PB2_WATCHADDR`, `PB2_3DDUMP`, `PB2_FRAMERENDER`,
-`PB2_SLOWRASTER`, `PB2_3DTHREADS` (décrites dans `PORTING_ROADMAP.md` et en
-tête des fichiers source).
+`PB2_SLOWRASTER`, `PB2_3DTHREADS`, `PB2_HEAPWATCH`, `PB2_TRACECALL`
+(décrites dans `PORTING_ROADMAP.md` et en tête des fichiers source).
+
+Pilotage pas à pas, pour aller loin sans rejouer depuis le début :
+`PB2_CTRL=<dossier>` fait attendre le jeu entre deux lots de commandes, que
+`python tools/ctrl.py <dossier> "m A 600 40" "k D 60" "s capture"` lui envoie
+(touches, captures en PNG, registres 2D ; historique rejouable dans
+`<dossier>/history.txt`).
